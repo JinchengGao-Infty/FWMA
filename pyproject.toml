@@ -1,0 +1,82 @@
+[project]
+name = "fwma"
+version = "0.1.0"
+description = "FWMA — Full-Workflow Multi-Agent Literature Review. AI Parliament-driven end-to-end systematic literature review automation."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [
+    { name = "Jincheng Gao" },
+]
+keywords = [
+    "literature-review",
+    "ai-parliament",
+    "multi-agent",
+    "academic-research",
+    "paper-review",
+    "mcp",
+    "systematic-review",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Text Processing :: General",
+]
+
+dependencies = [
+    "typer[all]>=0.9",
+    "rich>=13.0",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "httpx>=0.25",
+    "pymupdf>=1.23",
+    "arxiv>=2.0",
+    "openai>=1.0",
+    "anthropic>=0.30",
+]
+
+[project.optional-dependencies]
+mcp = ["fastmcp>=2.0"]
+vision = ["google-genai>=1.0"]
+browser = ["playwright>=1.40"]
+all = ["fwma[mcp,vision,browser]"]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+fwma = "fwma.cli:app"
+fwma-mcp = "fwma.mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/fwma/fwma"
+Documentation = "https://github.com/fwma/fwma/tree/main/docs"
+Repository = "https://github.com/fwma/fwma"
+Issues = "https://github.com/fwma/fwma/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fwma"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
