@@ -22,6 +22,21 @@ app = typer.Typer(
     rich_markup_mode="rich",
     no_args_is_help=True,
 )
+
+
+@app.callback()
+def main_callback(
+    verbose: int = typer.Option(0, "--verbose", "-v", count=True, help="Verbosity level (-v info, -vv debug)"),
+) -> None:
+    """FWMA — AI Parliament-driven systematic literature review."""
+    import logging
+
+    level = logging.WARNING
+    if verbose == 1:
+        level = logging.INFO
+    elif verbose >= 2:
+        level = logging.DEBUG
+    logging.basicConfig(level=level, format="%(levelname)s %(name)s: %(message)s")
 tools_app = typer.Typer(name="tools", help="Standalone tools (pdf-vision, citation-check).")
 app.add_typer(tools_app)
 
