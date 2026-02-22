@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 import json
 import logging
 import threading
 import uuid
+from collections.abc import Callable
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -52,8 +52,8 @@ class JobStatus(str, Enum):
 
 
 class RunManager:
-    def __init__(self, runs_root: Path | None = None):
-        config = load_config()
+    def __init__(self, runs_root: Path | None = None, config: FWMAConfig | None = None):
+        config = config or load_config()
         self.runs_root = Path(runs_root or config.runs_root or "./fwma_runs")
         self.runs_root.mkdir(parents=True, exist_ok=True)
 
@@ -142,12 +142,33 @@ class RunManager:
 
 
 class JobManager:
-    def __init__(self, runs_root: Path | None = None):
-        self.run_manager = RunManager(runs_root)
+    def __init__(self, runs_root: Path | None = None, config: FWMAConfig | None = None):
+        self.run_manager = RunManager(runs_root, config=config)
         self._jobs: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
 
+    def cleanup_completed(self, max_age_seconds: int = 3600) -> None:
+        """Remove completed/failed jobs older than max_age."""
+        from datetime import timedelta
+        cutoff = datetime.now() - timedelta(seconds=max_age_seconds)
+        with self._lock:
+            to_remove = []
+            for job_id, job in self._jobs.items():
+                if job["status"] in (JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED):
+                    completed_at = job.get("completed_at")
+                    if completed_at:
+                        try:
+                            if datetime.fromisoformat(completed_at) < cutoff:
+                                to_remove.append(job_id)
+                        except (ValueError, TypeError):
+                            pass
+            for job_id in to_remove:
+                del self._jobs[job_id]
+            if to_remove:
+                logger.info("Cleaned up %d old jobs", len(to_remove))
+
     def submit(self, run_id: str, step: str, func: Callable[..., Any], *args: Any, **kwargs: Any) -> str:
+        self.cleanup_completed()
         job_id = f"job_{step}_{uuid.uuid4().hex[:8]}"
         job: dict[str, Any] = {
             "job_id": job_id,
@@ -344,13 +365,13 @@ class FWMAService:
         reviews = self._load_reviews(run_id)
         return self.job_manager.submit(run_id, "report", pipeline.report, reviews, requirement, format)
 
-    def writing_review_async(self, manuscript: str, max_rounds: int = 3) -> str:
+    def writing_review_async(self, manuscript: str, max_rounds: int = 3, target_venue: str | None = None) -> str:
         from fwma.parliament.writing import review_writing
 
         run_id = f"writing_{uuid.uuid4().hex[:8]}"
         run_dir = self.run_manager.runs_root / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
-        return self.job_manager.submit(run_id, "writing_review", review_writing, manuscript, max_rounds=max_rounds)
+        return self.job_manager.submit(run_id, "writing_review", review_writing, manuscript, max_rounds=max_rounds, target_venue=target_venue)
 
     def get_job_status(self, job_id: str) -> dict[str, Any]:
         return self.job_manager.get_job(job_id)
@@ -358,13 +379,13 @@ class FWMAService:
     def parliament_debate(self, topic: str, context: str | None = None, max_rounds: int = 5) -> dict[str, Any]:
         from fwma.parliament.debate import Parliament
 
-        _ = max_rounds
         parliament = Parliament(
             chair_model=self.config.models.chair,
             member1_model=self.config.models.member1,
             member2_model=self.config.models.member2,
+            max_rounds=max_rounds,
         )
-        return parliament.hold_debate(topic, context or "")
+        return parliament.hold_debate(topic, context or "", max_rounds=max_rounds)
 
     def pdf_vision(self, pdf_path: str) -> dict[str, Any]:
         from fwma.tools.pdf_vision import extract_full

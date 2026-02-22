@@ -138,6 +138,7 @@ class Parliament:
         logger.info("  %s...", str(chair_data.get("content", ""))[:100])
 
         # Multi-round debate
+        round_num = 0
         for round_num in range(1, max_rounds + 1):
             logger.info("--- Round %d ---", round_num)
 
@@ -235,7 +236,7 @@ class Parliament:
         return {
             "debate_history": debate_history,
             "final_verdict": final_verdict,
-            "rounds_used": round_num if "round_num" in dir() else max_rounds,
+            "rounds_used": round_num,
         }
 
     def _generate_verdict(

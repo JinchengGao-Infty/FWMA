@@ -84,7 +84,7 @@ async def crawl(run_id: str, timeout_s: int = 600) -> dict:
 
     Returns crawl statistics and paper count.
     """
-    _ = timeout_s
+    # TODO: implement timeout support in pipeline
     return _get_service().crawl(run_id=run_id)
 
 
@@ -138,9 +138,8 @@ async def writing_review(manuscript: str, max_rounds: int = 3, target_venue: str
 
     Returns verdict, debate log, and detailed improvement suggestions.
     """
-    _ = target_venue
     service = _get_service()
-    job_id = service.writing_review_async(manuscript=manuscript, max_rounds=max_rounds)
+    job_id = service.writing_review_async(manuscript=manuscript, max_rounds=max_rounds, target_venue=target_venue)
     return {"job_id": job_id, "status": service.get_job_status(job_id)}
 
 
