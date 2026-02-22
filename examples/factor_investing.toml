@@ -1,0 +1,50 @@
+# Example: Factor Investing Research
+# Run with: fwma run examples/factor_investing.toml
+
+[research]
+name = "factor-investing-2024"
+requirement = """
+Research on factor investing, focusing on:
+- Momentum, value, and quality factors
+- Machine learning approaches to factor construction
+- Factor timing and regime detection
+- Transaction costs and factor decay
+"""
+
+[policy]
+max_papers_crawl = 500
+oa_only = false
+
+[models]
+screener = "gemini/gemini-2.5-flash"
+chair = "gemini/gemini-2.5-pro"
+member1 = "anthropic/claude-sonnet-4"
+member2 = "openai/gpt-4o"
+
+[[sources]]
+type = "openalex"
+[sources.query]
+keywords = ["factor investing", "momentum anomaly"]
+year_from = 2020
+limit = 200
+
+[[sources]]
+type = "openalex"
+[sources.query]
+keywords = ["machine learning", "factor model", "asset pricing"]
+year_from = 2021
+limit = 150
+
+[[sources]]
+type = "arxiv"
+[sources.query]
+categories = ["q-fin.PM", "q-fin.ST"]
+keywords = ["factor investing"]
+max_results = 100
+
+[[sources]]
+type = "openreview"
+[sources.query]
+venue = "ICAIF"
+keywords = ["factor"]
+limit = 50

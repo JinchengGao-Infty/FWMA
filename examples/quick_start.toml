@@ -1,0 +1,24 @@
+# Quick Start Example
+# Run with: fwma run examples/quick_start.toml
+
+[research]
+name = "my-first-review"
+requirement = "Recent advances in large language models for scientific discovery"
+
+[policy]
+max_papers_crawl = 50
+oa_only = true
+
+[[sources]]
+type = "openalex"
+[sources.query]
+keywords = ["large language model", "scientific discovery"]
+year_from = 2023
+limit = 30
+
+[[sources]]
+type = "arxiv"
+[sources.query]
+categories = ["cs.CL", "cs.AI"]
+keywords = ["LLM scientific discovery"]
+max_results = 20

@@ -1,0 +1,18 @@
+# Global FWMA Configuration
+# Copy to: ~/.config/fwma/config.toml
+
+[models]
+# Model format: "provider/model-name"
+# Supported providers: gemini, anthropic, openai, or any OpenAI-compatible endpoint
+screener = "gemini/gemini-2.5-flash"
+chair = "gemini/gemini-2.5-pro"
+member1 = "anthropic/claude-sonnet-4"
+member2 = "openai/gpt-4o"
+
+[defaults]
+language = "en"           # "en" or "zh"
+openalex_mailto = ""      # Your email for OpenAlex polite pool
+runs_root = "./runs"      # Where to store run data
+
+[parliament]
+max_rounds = 5            # Maximum debate rounds
