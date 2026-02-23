@@ -36,7 +36,7 @@ def extract_text_from_pdf(pdf_path: str | Path) -> str:
         doc = fitz.open(pdf_path)
         for page_num in range(len(doc)):
             page = doc[page_num]
-            text = page.get_text()
+            text = str(page.get_text())
             if text.strip():
                 text_parts.append(f"--- Page {page_num + 1} ---\n{text}")
         doc.close()
@@ -96,6 +96,9 @@ def extract_visuals_from_pdf(
 
 请以JSON数组格式返回，每个元素包含 type, page, description, content 字段。
 如果没有找到视觉元素，返回空数组 []。"""
+    system_prompt = (
+        """你是一位学术文档视觉解析专家。你必须严格依据PDF内容提取表格、图像与公式信息，并只返回可解析的JSON结果。"""
+    )
 
     try:
         # Detect API type
@@ -105,6 +108,7 @@ def extract_visuals_from_pdf(
             # Native Google Gemini API
             url = f"{api_url}/{model}:generateContent?key={api_key}"
             payload = {
+                "system_instruction": {"parts": [{"text": system_prompt}]},
                 "contents": [
                     {
                         "parts": [
@@ -117,7 +121,7 @@ def extract_visuals_from_pdf(
                             },
                         ]
                     }
-                ]
+                ],
             }
             response = requests.post(url, json=payload, timeout=300)
             response.raise_for_status()
@@ -141,6 +145,10 @@ def extract_visuals_from_pdf(
                 "model": model,
                 "messages": [
                     {
+                        "role": "system",
+                        "content": system_prompt,
+                    },
+                    {
                         "role": "user",
                         "content": [
                             {"type": "text", "text": prompt},
@@ -149,7 +157,7 @@ def extract_visuals_from_pdf(
                                 "image_url": {"url": f"data:application/pdf;base64,{pdf_base64}"},
                             },
                         ],
-                    }
+                    },
                 ],
                 "max_tokens": 4096,
             }
@@ -164,7 +172,7 @@ def extract_visuals_from_pdf(
             text = result["choices"][0]["message"]["content"]
 
         # Parse JSON from response
-        text = text.strip()
+        text = str(text).strip()
         if text.startswith("```"):
             text = text.split("\n", 1)[1] if "\n" in text else text[3:]
             if text.endswith("```"):

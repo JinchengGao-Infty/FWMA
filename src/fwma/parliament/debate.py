@@ -16,8 +16,10 @@ import json
 import logging
 from typing import Any
 
-from fwma.llm.client import LLMClient
 from fwma.core.utils import parse_json_response
+from fwma.llm.client import LLMClient
+from fwma.prompts.roles.member1 import SYSTEM_PROMPT as MEMBER1_PROMPT
+from fwma.prompts.roles.member2 import SYSTEM_PROMPT as MEMBER2_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -150,9 +152,9 @@ class Parliament:
             if self.member1_prompt:
                 member1_prompt = self.member1_prompt
             elif self.use_default_prompts and self.member1_role is None:
-                member1_prompt = prompts.MEMBER1_ENGINEER_PROMPT
+                member1_prompt = MEMBER1_PROMPT
             else:
-                member1_prompt = prompts.get_member_system_prompt("议员1", self.member1_role, "member1")
+                member1_prompt = prompts.get_member_system_prompt("议员1", self.member1_role)
 
             member1_response = self._call_model(
                 self.member1_model,
@@ -175,9 +177,9 @@ class Parliament:
             if self.member2_prompt:
                 member2_prompt = self.member2_prompt
             elif self.use_default_prompts and self.member2_role is None:
-                member2_prompt = prompts.MEMBER2_THEORIST_PROMPT
+                member2_prompt = MEMBER2_PROMPT
             else:
-                member2_prompt = prompts.get_member_system_prompt("议员2", self.member2_role, "member2")
+                member2_prompt = prompts.get_member_system_prompt("议员2", self.member2_role)
 
             member2_response = self._call_model(
                 self.member2_model,

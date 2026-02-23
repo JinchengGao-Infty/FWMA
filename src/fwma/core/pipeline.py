@@ -9,20 +9,21 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
 
-from fwma.llm.client import LLMClient
-from fwma.crawlers.openalex import OpenAlexCrawler
 from fwma.crawlers.arxiv import ArxivCrawler
+from fwma.crawlers.openalex import OpenAlexCrawler
 from fwma.crawlers.openreview import OpenReviewCrawler
-from fwma.screening.screener import Screener
 from fwma.download.downloader import PDFDownloader
+from fwma.llm.client import LLMClient
 from fwma.parliament.debate import Parliament
-from fwma.parliament.review import review_paper, review_batch
-from fwma.report.generator import ReportGenerator
+from fwma.parliament.review import review_paper
+from fwma.prompts.roles.chair import SYSTEM_PROMPT as CHAIR_PROMPT
 from fwma.prompts.zh import Step0Prompts
+from fwma.report.generator import ReportGenerator
+from fwma.screening.screener import Screener
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,7 @@ class ResearchPipeline:
         response = self.client.call(
             model=model,
             messages=[{"role": "user", "content": prompt}],
+            system_prompt=CHAIR_PROMPT,
         )
         logger.info("Search strategy suggestion generated")
         return response
@@ -294,7 +296,7 @@ class ResearchPipeline:
                 pdf_path = Path(paper["local_path"])
                 result = review_paper(
                     paper=paper,
-                    requirement=requirement,
+                    user_requirement=requirement,
                     parliament=self.parliament,
                     pdf_path=pdf_path,
                 )
@@ -354,7 +356,7 @@ class ResearchPipeline:
 
         # Step 0: Init config
         config = self.init_config(requirement, sources)
-        sources = config.get("sources", sources or [])
+        sources = config.get("sources", sources or []) or []
 
         # Step 1: Crawl
         papers = self.crawl(sources, on_progress=on_progress)

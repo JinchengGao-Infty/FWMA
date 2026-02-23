@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 
 from fwma.llm.client import LLMClient
+from fwma.prompts.roles.citation import SYSTEM_PROMPT as CITATION_PROMPT
 from fwma.tools.pdf_vision import extract_text_from_pdf
 
 logger = logging.getLogger(__name__)
@@ -70,7 +71,7 @@ def check_citations(
         cited_content = f"Title: {title}"
         if pdf_path and Path(pdf_path).exists():
             try:
-                pdf_text = extract_text_from_pdf(pdf_path, max_pages=5)
+                pdf_text = extract_text_from_pdf(pdf_path)
                 cited_content += f"\n\nContent (first 5 pages):\n{pdf_text[:5000]}"
             except Exception as e:
                 logger.warning(f"Failed to extract PDF for {cite_key}: {e}")
@@ -84,14 +85,6 @@ def check_citations(
 
         # Ask LLM to evaluate
         messages = [
-            {
-                "role": "system",
-                "content": (
-                    "你是一位学术论文审稿专家。你的任务是判断论文中的引用是否合理。"
-                    "请根据手稿中的引用上下文和被引论文的内容，评估引用是否恰当。"
-                    "请直接输出JSON格式的评估结果。"
-                ),
-            },
             {
                 "role": "user",
                 "content": f"""请评估以下引用是否合理：
@@ -117,7 +110,7 @@ def check_citations(
         ]
 
         try:
-            response = client.call(model=model, messages=messages)
+            response = client.call(model=model, messages=messages, system_prompt=CITATION_PROMPT)
             from fwma.core.utils import parse_json_response
 
             result = parse_json_response(response)

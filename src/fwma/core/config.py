@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import importlib
+import os
 from pathlib import Path
 from typing import Any
 
@@ -13,10 +13,14 @@ from pydantic import BaseModel, Field
 class ModelsConfig(BaseModel):
     """LLM model assignments for each role."""
 
-    screener: str = "gemini/gemini-2.5-flash"
-    chair: str = "gemini/gemini-2.5-pro"
-    member1: str = "anthropic/claude-sonnet-4"
-    member2: str = "openai/gpt-4o"
+    screener: str = "openai/gpt-5.2"
+    chair: str = "gemini/gemini-3.1-pro-low"
+    member1: str = "anthropic/claude-opus-4-6"
+    member2: str = "openai/gpt-5.2"
+    report: str = "gemini/gemini-3.1-pro-high"
+    writing_review: str = "anthropic/claude-opus-4-6"
+    citation_check: str = "gemini/gemini-3-flash"
+    pdf_vision: str = "gemini/gemini-3-flash"
 
 
 class FWMAConfig(BaseModel):
@@ -62,7 +66,7 @@ class FWMAConfig(BaseModel):
             raise ValueError(f"Missing API keys for configured models. Set: {required}")
 
     @classmethod
-    def load(cls) -> "FWMAConfig":
+    def load(cls) -> FWMAConfig:
         """Load config from env vars + ~/.config/fwma/config.toml."""
         config_data: dict[str, Any] = {}
 

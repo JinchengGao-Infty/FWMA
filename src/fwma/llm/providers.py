@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import os
-import re
 from typing import Any
 
 import requests
@@ -67,6 +67,7 @@ def call_anthropic(
     """Call Anthropic Claude API (native format)."""
     api_key = api_key or get_api_key("anthropic")
     base_url = base_url or get_base_url("anthropic")
+    safe_messages = copy.deepcopy(messages)
 
     url = f"{base_url}/v1/messages"
     headers = {
@@ -78,10 +79,15 @@ def call_anthropic(
     payload: dict[str, Any] = {
         "model": model,
         "max_tokens": max_tokens,
-        "messages": messages,
+        "messages": safe_messages,
     }
     if system_prompt:
         payload["system"] = system_prompt
+        prefix = f"[系统指令]\n{system_prompt}\n[/系统指令]\n\n"
+        for msg in safe_messages:
+            if msg.get("role") == "user":
+                msg["content"] = prefix + msg.get("content", "")
+                break
 
     logger.debug(f"Calling Anthropic: {model}")
     response = requests.post(url, headers=headers, json=payload, timeout=120)

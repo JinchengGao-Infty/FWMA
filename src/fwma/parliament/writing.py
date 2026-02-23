@@ -12,8 +12,9 @@ from pathlib import Path
 
 from fwma.llm.client import LLMClient
 from fwma.parliament.debate import Parliament
-from fwma.tools.pdf_vision import extract_text_from_pdf, extract_visuals_from_pdf, format_visuals_for_context
+from fwma.prompts.roles.writing import SYSTEM_PROMPT as WRITING_PROMPT
 from fwma.prompts.zh import WritingParliamentPrompts
+from fwma.tools.pdf_vision import extract_text_from_pdf, extract_visuals_from_pdf, format_visuals_for_context
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ def load_reference_context(reviews_dir: Path | str | None = None, report_path: P
             highly_applicable = []
             for rf in review_files:
                 try:
-                    with open(rf, "r", encoding="utf-8") as f:
+                    with open(rf, encoding="utf-8") as f:
                         review = json.load(f)
                     verdict = review.get("final_verdict", {})
                     if verdict.get("recommendation") == "highly_applicable":
@@ -77,14 +78,14 @@ def generate_writing_report(
     client = LLMClient()
 
     prompt = WritingParliamentPrompts.get_writing_report_prompt(
-        debate_history=debate_history,
-        final_verdict=final_verdict,
+        debate_history=json.dumps(debate_history, ensure_ascii=False, indent=2),
+        final_verdict=json.dumps(final_verdict, ensure_ascii=False, indent=2),
         target_venue=target_venue or "top-tier venue",
         reference_context=reference_context or "",
     )
 
     messages = [{"role": "user", "content": prompt}]
-    report = client.call(model=model, messages=messages)
+    report = client.call(model=model, messages=messages, system_prompt=WRITING_PROMPT)
 
     if output_path:
         output_path = Path(output_path)
@@ -142,17 +143,12 @@ def review_writing(
     # Create parliament with writing-specific prompts
     if parliament is None:
         parliament = Parliament(
-            chair_prompts={
-                "system": WritingParliamentPrompts.WRITING_CHAIR_SYSTEM_PROMPT,
-            },
-            member1_prompts={
-                "system": WritingParliamentPrompts.WRITING_REVIEWER1_SYSTEM_PROMPT,
-                "role": "技术审稿人",
-            },
-            member2_prompts={
-                "system": WritingParliamentPrompts.WRITING_REVIEWER2_SYSTEM_PROMPT,
-                "role": "写作审稿人",
-            },
+            chair_prompt=WritingParliamentPrompts.EDITOR_CHAIR_PROMPT,
+            member1_prompt=WritingParliamentPrompts.CONTENT_EXPERT_PROMPT,
+            member2_prompt=WritingParliamentPrompts.EXPRESSION_EXPERT_PROMPT,
+            verdict_prompt=WritingParliamentPrompts.VERDICT_PROMPT,
+            member1_role="技术审稿人",
+            member2_role="写作审稿人",
         )
 
     # Run debate

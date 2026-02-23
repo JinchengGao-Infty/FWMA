@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import logging
-from pathlib import Path
 
-from fwma.llm.client import LLMClient
 from fwma.core.utils import parse_json_response
+from fwma.llm.client import LLMClient
+from fwma.prompts.roles.screener import SYSTEM_PROMPT as SCREENER_PROMPT
 from fwma.prompts.zh import Step2Prompts
 
 logger = logging.getLogger(__name__)
@@ -49,24 +48,16 @@ class Screener:
             logger.info(f"Screening batch {i // batch_size + 1} ({len(batch)} papers)")
             # Assign temporary IDs for matching if papers lack 'id'
             for idx, paper in enumerate(batch):
-                if not paper.get('id'):
-                    paper['_screen_id'] = str(i + idx)
+                if not paper.get("id"):
+                    paper["_screen_id"] = str(i + idx)
 
-            # Build papers text for prompt
-            papers_text = ""
-            for idx, paper in enumerate(batch):
-                pid = paper.get('id', paper.get('_screen_id', idx))
-                papers_text += f"\n--- Paper {idx + 1} (ID: {pid}) ---\n"
-                papers_text += f"Title: {paper.get('title', 'N/A')}\n"
-                papers_text += f"Authors: {', '.join(paper.get('authors', []))}\n"
-                papers_text += f"Year: {paper.get('year', 'N/A')}\n"
-                papers_text += f"Abstract: {paper.get('abstract', 'N/A')}\n"
-            prompt = Step2Prompts.get_screening_prompt(papers_text, requirement)
+            prompt = Step2Prompts.get_screening_prompt(batch, requirement)
 
             try:
                 response = self.client.call(
                     model=self.model,
                     messages=[{"role": "user", "content": prompt}],
+                    system_prompt=SCREENER_PROMPT,
                 )
                 result = parse_json_response(response)
                 if isinstance(result, dict):
@@ -85,16 +76,15 @@ class Screener:
                         continue
 
                     # Find matching paper by id or _screen_id
-                    matching = [
-                        p for p in batch
-                        if str(p.get("id") or p.get("_screen_id", "")) == str(paper_id)
-                    ]
+                    matching = [p for p in batch if str(p.get("id") or p.get("_screen_id", "")) == str(paper_id)]
                     if matching:
                         paper_info = matching[0].copy()
-                        paper_info.pop('_screen_id', None)
+                        paper_info.pop("_screen_id", None)
                         paper_info["relevance"] = relevance
                         paper_info["screening_reason"] = sel.get("reason", "")
-                        all_selected.append({"paper": paper_info, "relevance": relevance, "reason": sel.get("reason", "")})
+                        all_selected.append(
+                            {"paper": paper_info, "relevance": relevance, "reason": sel.get("reason", "")}
+                        )
                     else:
                         logger.debug(f"No match for paper_id={paper_id}")
             except Exception as e:
@@ -103,7 +93,7 @@ class Screener:
 
         # Clean up temp IDs from original papers
         for p in papers:
-            p.pop('_screen_id', None)
+            p.pop("_screen_id", None)
         logger.info(f"Screening complete: {len(all_selected)} papers selected from {len(papers)} total")
         return all_selected
 
