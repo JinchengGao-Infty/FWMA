@@ -72,11 +72,6 @@ export GEMINI_API_KEY=your-key
 export ANTHROPIC_API_KEY=your-key
 export OPENAI_API_KEY=your-key
 
-# Custom endpoints (optional)
-export GEMINI_BASE_URL=http://localhost:8741
-export ANTHROPIC_BASE_URL=http://localhost:8002
-export OPENAI_BASE_URL=http://localhost:8317/v1
-
 # Let AI suggest a search strategy
 fwma suggest "transformer applications in seismology"
 
