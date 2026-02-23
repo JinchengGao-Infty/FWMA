@@ -31,7 +31,10 @@ class ArxivCrawler:
         Returns:
             List of normalized paper dicts.
         """
-        query = " OR ".join(keywords)
+        all_terms = []
+        for kw in keywords:
+            all_terms.extend(kw.split())
+        query = " AND ".join(all_terms)
         logger.info(f"Searching arXiv: query='{query}', limit={limit}")
 
         search = arxiv.Search(
