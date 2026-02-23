@@ -282,7 +282,7 @@ limit = 100
 - Google Gemini (native API)
 - Anthropic Claude (native API)
 - OpenAI GPT (native API)
-- Any OpenAI-compatible endpoint (Ollama, vLLM, ZeroGravity, etc.)
+- Any OpenAI-compatible endpoint (Ollama, vLLM, etc.)
 
 Model format: `provider/model-name` (e.g., `anthropic/claude-opus-4-6`, `gemini/gemini-3-flash`)
 
