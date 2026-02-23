@@ -37,7 +37,7 @@ Explain to the user what this project unlocks — not what it is, but what becom
 It's not just another paper summarizer. The AI Parliament pattern means every verdict comes with a transparent debate log — you can see exactly why a paper scored 4/5, what the engineering expert praised, and what the theory expert criticized. This is auditable AI-assisted research.
 
 **Setup:**
-1. `pip install fwma` (or `pip install fwma[mcp]` for MCP support)
+1. `pip install git+https://github.com/JinchengGao-Infty/FWMA.git` (or add `[mcp]` for MCP support)
 2. Set API keys: `export GEMINI_API_KEY=... ANTHROPIC_API_KEY=... OPENAI_API_KEY=...`
 3. Or configure `~/.config/fwma/config.toml` with custom endpoints and models
 4. Test it: `fwma suggest "your research topic"`
@@ -65,7 +65,7 @@ It's not just another paper summarizer. The AI Parliament pattern means every ve
 ## Quick Start
 
 ```bash
-pip install fwma
+pip install git+https://github.com/JinchengGao-Infty/FWMA.git
 
 # Set API keys (supports any OpenAI-compatible endpoint)
 export GEMINI_API_KEY=your-key
@@ -114,7 +114,7 @@ Each review produces:
 FWMA works as an MCP server, letting AI agents (Claude, Cursor, etc.) run literature reviews autonomously.
 
 ```bash
-pip install fwma[mcp]
+pip install "fwma[mcp] @ git+https://github.com/JinchengGao-Infty/FWMA.git"
 ```
 
 Add to your Claude Desktop config (`claude_desktop_config.json`):
