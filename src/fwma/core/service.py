@@ -53,8 +53,8 @@ class JobStatus(str, Enum):
 
 class RunManager:
     def __init__(self, runs_root: Path | None = None, config: FWMAConfig | None = None):
-        config = config or load_config()
-        self.runs_root = Path(runs_root or config.runs_root or "./fwma_runs")
+        self.config = config or load_config()
+        self.runs_root = Path(runs_root or self.config.runs_root or "./fwma_runs")
         self.runs_root.mkdir(parents=True, exist_ok=True)
 
     def create_run(
@@ -118,7 +118,7 @@ class RunManager:
         run_dir = self.runs_root / run_id
         if not run_dir.exists():
             raise ValueError(f"Run {run_id} not found")
-        config = load_config()
+        config = self.config
         return ResearchPipeline(
             run_dir=run_dir,
             screener_model=config.models.screener,
@@ -150,6 +150,7 @@ class JobManager:
     def cleanup_completed(self, max_age_seconds: int = 3600) -> None:
         """Remove completed/failed jobs older than max_age."""
         from datetime import timedelta
+
         cutoff = datetime.now() - timedelta(seconds=max_age_seconds)
         with self._lock:
             to_remove = []
@@ -167,9 +168,17 @@ class JobManager:
             if to_remove:
                 logger.info("Cleaned up %d old jobs", len(to_remove))
 
-    def submit(self, run_id: str, step: str, func: Callable[..., Any], *args: Any, **kwargs: Any) -> str:
+    def submit(
+        self,
+        run_id: str,
+        step: str,
+        func: Callable[..., Any],
+        *args: Any,
+        job_id: str | None = None,
+        **kwargs: Any,
+    ) -> str:
         self.cleanup_completed()
-        job_id = f"job_{step}_{uuid.uuid4().hex[:8]}"
+        job_id = job_id or f"job_{step}_{uuid.uuid4().hex[:8]}"
         job: dict[str, Any] = {
             "job_id": job_id,
             "run_id": run_id,
@@ -203,7 +212,12 @@ class JobManager:
 
     def list_run_jobs(self, run_id: str) -> list[dict[str, Any]]:
         with self._lock:
-            jobs = [self._to_jsonable(job) for job in self._jobs.values() if job.get("run_id") == run_id]
+            jobs_map = {
+                str(job["job_id"]): self._to_jsonable(job) for job in self._jobs.values() if job.get("run_id") == run_id
+            }
+        for persisted_job in self._load_run_jobs_from_disk(run_id):
+            jobs_map.setdefault(str(persisted_job["job_id"]), self._to_jsonable(persisted_job))
+        jobs = list(jobs_map.values())
         return sorted(jobs, key=lambda item: item.get("created_at", ""), reverse=True)
 
     def update_progress(self, job_id: str, current: int, total: int, message: str = "") -> None:
@@ -271,6 +285,25 @@ class JobManager:
             return payload
         return None
 
+    def _load_run_jobs_from_disk(self, run_id: str) -> list[dict[str, Any]]:
+        jobs_dir = self.run_manager.runs_root / run_id / "jobs"
+        if not jobs_dir.exists():
+            return []
+        jobs: list[dict[str, Any]] = []
+        for job_file in sorted(jobs_dir.glob("job_*.json")):
+            try:
+                payload = json.loads(job_file.read_text(encoding="utf-8"))
+                status = payload.get("status")
+                if isinstance(status, str):
+                    try:
+                        payload["status"] = JobStatus(status)
+                    except ValueError:
+                        payload["status"] = JobStatus.FAILED
+                jobs.append(payload)
+            except Exception:
+                logger.exception("Failed to load job file: %s", job_file)
+        return jobs
+
     @staticmethod
     def _to_jsonable(job: dict[str, Any]) -> dict[str, Any]:
         return {k: (v.value if isinstance(v, JobStatus) else v) for k, v in job.items()}
@@ -278,9 +311,10 @@ class JobManager:
 
 class FWMAService:
     def __init__(self, runs_root: Path | None = None):
-        self.run_manager = RunManager(runs_root)
-        self.job_manager = JobManager(runs_root)
         self.config = load_config()
+        self.config.validate_model_credentials()
+        self.run_manager = RunManager(runs_root, config=self.config)
+        self.job_manager = JobManager(runs_root, config=self.config)
 
     def suggest_sources(self, requirement: str, model: str | None = None) -> dict[str, Any]:
         tmp_run_id = "_tmp_suggest"
@@ -346,7 +380,20 @@ class FWMAService:
         if not screened_file.exists():
             raise ValueError(f"No screened papers for run {run_id}. Run screen first.")
         papers = json.loads(screened_file.read_text(encoding="utf-8"))
-        return self.job_manager.submit(run_id, "download", pipeline.download, papers, concurrency)
+        job_id = f"job_download_{uuid.uuid4().hex[:8]}"
+
+        def on_progress(current: int, total: int) -> None:
+            self.job_manager.update_progress(job_id, current, total, "download")
+
+        return self.job_manager.submit(
+            run_id,
+            "download",
+            pipeline.download,
+            papers,
+            concurrency,
+            on_progress=on_progress,
+            job_id=job_id,
+        )
 
     def review_async(self, run_id: str, max_rounds: int = 5) -> str:
         pipeline = self.run_manager.get_pipeline(run_id)
@@ -356,14 +403,34 @@ class FWMAService:
         if not downloaded_file.exists():
             raise ValueError(f"No downloaded papers for run {run_id}. Run download first.")
         papers = json.loads(downloaded_file.read_text(encoding="utf-8"))
-        return self.job_manager.submit(run_id, "review", pipeline.review, papers, requirement, max_rounds)
+        job_id = f"job_review_{uuid.uuid4().hex[:8]}"
+
+        def on_progress(current: int, total: int) -> None:
+            self.job_manager.update_progress(job_id, current, total, "review")
+
+        return self.job_manager.submit(
+            run_id,
+            "review",
+            pipeline.review,
+            papers,
+            requirement,
+            max_rounds,
+            on_progress=on_progress,
+            job_id=job_id,
+        )
 
     def report_async(self, run_id: str, format: str = "markdown") -> str:
         pipeline = self.run_manager.get_pipeline(run_id)
         run_config = self.run_manager.get_run(run_id)
         requirement = str(run_config["requirement"])
         reviews = self._load_reviews(run_id)
-        return self.job_manager.submit(run_id, "report", pipeline.report, reviews, requirement, format)
+        job_id = f"job_report_{uuid.uuid4().hex[:8]}"
+
+        def report_task() -> Any:
+            self.job_manager.update_progress(job_id, 1, 1, "report")
+            return pipeline.report(reviews, requirement, format)
+
+        return self.job_manager.submit(run_id, "report", report_task, job_id=job_id)
 
     def writing_review_async(self, manuscript: str, max_rounds: int = 3, target_venue: str | None = None) -> str:
         from fwma.parliament.writing import review_writing
@@ -371,7 +438,14 @@ class FWMAService:
         run_id = f"writing_{uuid.uuid4().hex[:8]}"
         run_dir = self.run_manager.runs_root / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
-        return self.job_manager.submit(run_id, "writing_review", review_writing, manuscript, max_rounds=max_rounds, target_venue=target_venue)
+        return self.job_manager.submit(
+            run_id,
+            "writing_review",
+            review_writing,
+            manuscript,
+            max_rounds=max_rounds,
+            target_venue=target_venue,
+        )
 
     def get_job_status(self, job_id: str) -> dict[str, Any]:
         return self.job_manager.get_job(job_id)
@@ -383,7 +457,6 @@ class FWMAService:
             chair_model=self.config.models.chair,
             member1_model=self.config.models.member1,
             member2_model=self.config.models.member2,
-            max_rounds=max_rounds,
         )
         return parliament.hold_debate(topic, context or "", max_rounds=max_rounds)
 

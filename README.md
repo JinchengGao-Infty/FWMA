@@ -72,7 +72,10 @@ uvx --from "fwma[mcp]" fwma-mcp
 | `pdf_vision` | sync | PDF visual extraction |
 | `citation_check` | sync | Citation reasonability check |
 | `run_status` | sync | Query run status and artifacts |
+| `job_status` | sync | Query status/progress for one async job |
 | `artifact_read` | sync | Read run artifacts |
+
+Long-running tools (`download`, `review`, `report`, `writing_review`) return a `job_id` immediately. Poll with `job_status` until `status` becomes `succeeded` or `failed`.
 
 ## CLI Reference
 

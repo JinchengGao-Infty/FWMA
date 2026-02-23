@@ -172,6 +172,12 @@ async def run_status(run_id: str) -> dict:
 
 
 @mcp.tool()
+async def job_status(job_id: str) -> dict:
+    """Get status for an asynchronous job by job_id."""
+    return _get_service().get_job_status(job_id=job_id)
+
+
+@mcp.tool()
 async def artifact_read(run_id: str, path: str) -> dict:
     """Read a text artifact (JSON, Markdown, log) from a research run."""
     content = _get_service().read_artifact(run_id=run_id, path=path)

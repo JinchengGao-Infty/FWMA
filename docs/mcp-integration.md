@@ -81,6 +81,7 @@ fwma-mcp
 | Tool | Parameters | Description |
 |------|------------|-------------|
 | `run_status` | `run_id` | Get run status and available artifacts |
+| `job_status` | `job_id` | Get status/progress for one async job |
 | `artifact_read` | `run_id`, `path` | Read a text artifact from a run |
 
 ## Example: AI Agent Conversation
@@ -124,10 +125,12 @@ Agent: "I've completed the literature review. Found 187 papers, 64 passed screen
 
 ## Async Operations
 
-Long-running tools (`download`, `review`, `report`, `writing_review`) report progress via MCP's progress notification mechanism. The AI agent receives periodic updates like:
+Long-running tools (`download`, `review`, `report`, `writing_review`) return a `job_id` immediately. Poll progress using `job_status` (or `run_status` to see all jobs for a run):
 
 ```
-Progress: 15/58 papers reviewed (25.9%)
+Agent: [calls review] -> {"job_id": "job_review_ab12cd34", ...}
+Agent: [calls job_status] -> {"status": "running", "progress": {"current": 15, "total": 58, "message": "review"}}
+Agent: [calls job_status] -> {"status": "succeeded", ...}
 ```
 
 ## Troubleshooting

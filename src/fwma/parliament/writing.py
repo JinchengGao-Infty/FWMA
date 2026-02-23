@@ -100,6 +100,7 @@ def review_writing(
     target_venue: str | None = None,
     user_notes: str | None = None,
     parliament: Parliament | None = None,
+    max_rounds: int = 3,
     reference_context: str | None = None,
     generate_report: bool = True,
     report_model: str = "gemini/gemini-2.5-pro",
@@ -159,6 +160,7 @@ def review_writing(
     result = parliament.hold_debate(
         paper_text=debate_context,
         user_requirement=writing_requirement,
+        max_rounds=max_rounds,
     )
 
     # Generate detailed report if requested

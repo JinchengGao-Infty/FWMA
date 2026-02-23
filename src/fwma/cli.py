@@ -37,6 +37,8 @@ def main_callback(
     elif verbose >= 2:
         level = logging.DEBUG
     logging.basicConfig(level=level, format="%(levelname)s %(name)s: %(message)s")
+
+
 tools_app = typer.Typer(name="tools", help="Standalone tools (pdf-vision, citation-check).")
 app.add_typer(tools_app)
 
@@ -156,10 +158,9 @@ def run(
     config: Path = typer.Argument(..., help="Path to research config TOML file"),
     steps: str = typer.Option(None, help="Comma-separated steps to run (crawl,screen,download,review,report)"),
     resume: bool = typer.Option(True, help="Resume from last checkpoint"),
-    verbose: int = typer.Option(0, "--verbose", "-v", count=True, help="Verbosity level"),
 ):
     """Run full research pipeline from config file."""
-    del resume, verbose
+    del resume
     _load_config()
     from fwma.core.service import FWMAService
 
@@ -326,7 +327,7 @@ def writing_review(
         console.print(table)
 
     service = FWMAService()
-    job_id = service.writing_review_async(manuscript=str(pdf_path), max_rounds=rounds)
+    job_id = service.writing_review_async(manuscript=str(pdf_path), max_rounds=rounds, target_venue=venue)
     status = _wait_for_job(service, job_id, "Writing review")
     _print_dict("Writing Review", status)
 

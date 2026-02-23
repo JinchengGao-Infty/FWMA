@@ -158,14 +158,17 @@ class TestJobManager:
         jm = JobManager(runs_root=tmp_runs)
         jm.run_manager.create_run(requirement="test", sources=[], run_id="test_run")
         import threading
+
         barrier = threading.Event()
         progress_job_id = {"id": None}
+
         def slow_task():
             barrier.wait()
             for i in range(3):
                 jm.update_progress(progress_job_id["id"], i + 1, 3, f"Step {i + 1}")
                 time.sleep(0.1)
             return "done"
+
         job_id = jm.submit("test_run", "review", slow_task)
         progress_job_id["id"] = job_id
         barrier.set()
@@ -186,6 +189,17 @@ class TestJobManager:
         assert job_file.exists()
         job_data = json.loads(job_file.read_text())
         assert job_data["status"] == "succeeded"
+
+    def test_list_run_jobs_loads_from_disk(self, tmp_runs):
+        jm = JobManager(runs_root=tmp_runs)
+        jm.run_manager.create_run(requirement="test", sources=[], run_id="test_run")
+
+        job_id = jm.submit("test_run", "crawl", lambda: "ok")
+        time.sleep(0.5)
+
+        jm2 = JobManager(runs_root=tmp_runs)
+        jobs = jm2.list_run_jobs("test_run")
+        assert any(job["job_id"] == job_id for job in jobs)
 
 
 class TestFWMAService:
@@ -237,3 +251,40 @@ class TestFWMAService:
 
         status = service.get_job_status(job_id)
         assert status["status"] == JobStatus.SUCCEEDED
+
+    @patch("fwma.core.service.FWMAConfig")
+    def test_run_status_includes_jobs_from_disk(self, mock_config_cls, tmp_runs):
+        mock_config = MagicMock()
+        mock_config.runs_root = str(tmp_runs)
+        mock_config.models = {}
+        mock_config_cls.load.return_value = mock_config
+
+        service = FWMAService(runs_root=tmp_runs)
+        service.create_run(requirement="test", sources=[], run_id="test_run")
+        job_id = service.job_manager.submit("test_run", "crawl", lambda: "ok")
+        time.sleep(0.5)
+
+        service2 = FWMAService(runs_root=tmp_runs)
+        status = service2.run_status("test_run")
+        assert any(job["job_id"] == job_id for job in status["active_jobs"])
+
+    @patch("fwma.core.service.FWMAConfig")
+    def test_writing_review_async_forwards_target_venue_and_rounds(self, mock_config_cls, tmp_runs):
+        mock_config = MagicMock()
+        mock_config.runs_root = str(tmp_runs)
+        mock_config.models = {}
+        mock_config_cls.load.return_value = mock_config
+
+        service = FWMAService(runs_root=tmp_runs)
+
+        with patch.object(service.job_manager, "submit", return_value="job_test_123") as submit_mock:
+            job_id = service.writing_review_async(
+                manuscript="/tmp/manuscript.pdf",
+                max_rounds=7,
+                target_venue="NeurIPS",
+            )
+
+        assert job_id == "job_test_123"
+        _, kwargs = submit_mock.call_args
+        assert kwargs["max_rounds"] == 7
+        assert kwargs["target_venue"] == "NeurIPS"
