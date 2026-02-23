@@ -70,7 +70,7 @@ def _call_with_retry(
 DEFAULT_URLS = {
     "anthropic": "https://api.anthropic.com",
     "gemini": "https://generativelanguage.googleapis.com",
-    "gemini-openai": None,  # OpenAI-compatible Gemini proxy
+    "gemini-openai": None,  # OpenAI-compatible Gemini endpoint
     "openai": "https://api.openai.com",
 }
 
@@ -219,7 +219,7 @@ def call_openai_format(
     provider: str = "openai",
     **kwargs: Any,
 ) -> str:
-    """Call any OpenAI-format API (OpenAI, Gemini proxy, vLLM, Ollama, etc.)."""
+    """Call any OpenAI-compatible API (OpenAI, Gemini, vLLM, Ollama, etc.)."""
     api_key = api_key or get_api_key(provider)
     base_url = base_url or get_base_url(provider)
 

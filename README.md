@@ -235,10 +235,10 @@ GEMINI_API_KEY=your-gemini-key
 ANTHROPIC_API_KEY=your-anthropic-key
 OPENAI_API_KEY=your-openai-key
 
-# Custom endpoints (optional)
-GEMINI_BASE_URL=http://your-gemini-proxy
-ANTHROPIC_BASE_URL=http://your-anthropic-proxy
-OPENAI_BASE_URL=http://your-openai-proxy/v1
+# Custom API endpoints (optional, for self-hosted or enterprise deployments)
+# GEMINI_BASE_URL=https://generativelanguage.googleapis.com
+# ANTHROPIC_BASE_URL=https://api.anthropic.com
+# OPENAI_BASE_URL=https://api.openai.com/v1
 ```
 
 ### Global defaults (`~/.config/fwma/config.toml`)
