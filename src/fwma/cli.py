@@ -341,7 +341,7 @@ def start_mcp() -> None:
         console.print("[bold]Starting FWMA MCP server...[/bold]")
         mcp.run()
     except ImportError:
-        console.print("[red]MCP support not installed. Run: pip install fwma\\[mcp][/red]")
+        console.print("[red]MCP support not installed. Run: pip install -e '.[mcp]' from the project root[/red]")
         raise typer.Exit(1)
 
 

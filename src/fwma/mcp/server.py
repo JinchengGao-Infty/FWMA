@@ -1,7 +1,7 @@
 """FWMA MCP Server — AI Parliament-driven literature review for AI agents.
 
 Start with: fwma mcp
-Or: uvx --from fwma fwma-mcp
+Or: pip install -e '.[mcp]' from the project root
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from typing import Any
 try:
     from fastmcp import FastMCP  # pyright: ignore[reportMissingImports]
 except ImportError:
-    raise ImportError("MCP support requires fastmcp. Install with: pip install fwma[mcp]")
+    raise ImportError("MCP support requires fastmcp. Install with: pip install -e '.[mcp]' from the project root")
 
 from fwma.core.service import FWMAService
 

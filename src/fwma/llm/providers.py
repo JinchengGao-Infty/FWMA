@@ -168,7 +168,7 @@ def call_gemini_native(
     api_key = api_key or get_api_key("gemini")
     base_url = base_url or get_base_url("gemini")
 
-    url = f"{base_url}/v1beta/models/{model}:streamGenerateContent?alt=sse&key={api_key}"
+    url = f"{base_url}/v1beta/models/{model}:streamGenerateContent?alt=sse"
 
     # Build contents in Gemini native format
     contents = []
@@ -183,7 +183,7 @@ def call_gemini_native(
     logger.debug(f"Calling Gemini native: {model}")
     response = _call_with_retry(
         requests.post, "gemini", url,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
         json=payload, timeout=120, stream=True,
     )
 
@@ -322,7 +322,7 @@ def call_gemini_structured(
 
     # Fallback: native Gemini with JSON mode
     native_base = get_base_url("gemini")
-    url = f"{native_base}/v1beta/models/{model}:generateContent?key={api_key}"
+    url = f"{native_base}/v1beta/models/{model}:generateContent"
 
     contents = []
     for msg in messages:
@@ -342,7 +342,7 @@ def call_gemini_structured(
 
     response = _call_with_retry(
         requests.post, "gemini", url,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
         json=payload_native, timeout=120,
     )
     data = response.json()

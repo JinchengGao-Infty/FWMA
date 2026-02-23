@@ -7,7 +7,7 @@
 ## Installation
 
 ```bash
-pip install fwma[mcp]
+pip install -e '.[mcp]'
 ```
 
 ## Configuration
@@ -29,21 +29,13 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 }
 ```
 
-### Using uvx (no install needed)
-
-```json
-{
-  "mcpServers": {
-    "fwma": {
-      "command": "uvx",
-      "args": ["--from", "fwma[mcp]", "fwma-mcp"],
-      "env": {
-        "GEMINI_API_KEY": "your-key-here"
-      }
-    }
-  }
-}
+### Using pip from source
+```bash
+git clone https://github.com/JinchengGao-Infty/FWMA.git
+cd FWMA
+pip install -e '.[mcp]'
 ```
+Then configure your MCP client to use `fwma-mcp` as the command.
 
 ### Manual start
 
@@ -137,7 +129,7 @@ Agent: [calls job_status] -> {"status": "succeeded", ...}
 
 ### "MCP support not installed"
 ```bash
-pip install fwma[mcp]
+pip install -e '.[mcp]'
 ```
 
 ### "No API key configured"

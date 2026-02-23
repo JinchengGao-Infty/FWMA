@@ -106,7 +106,7 @@ def extract_visuals_from_pdf(
 
         if is_native_google:
             # Native Google Gemini API
-            url = f"{api_url}/{model}:generateContent?key={api_key}"
+            url = f"{api_url}/{model}:generateContent"
             payload = {
                 "system_instruction": {"parts": [{"text": system_prompt}]},
                 "contents": [
@@ -123,7 +123,8 @@ def extract_visuals_from_pdf(
                     }
                 ],
             }
-            response = requests.post(url, json=payload, timeout=300)
+            headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
+            response = requests.post(url, headers=headers, json=payload, timeout=300)
             response.raise_for_status()
             result = response.json()
 
