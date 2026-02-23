@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import importlib
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,32 @@ class FWMAConfig(BaseModel):
     openalex_mailto: str = ""
     runs_root: str = "./runs"
 
+    def validate_model_credentials(self) -> None:
+        provider_to_key = {
+            "gemini": self.gemini_api_key,
+            "anthropic": self.anthropic_api_key,
+            "openai": self.openai_api_key,
+        }
+        models = [
+            self.models.screener,
+            self.models.chair,
+            self.models.member1,
+            self.models.member2,
+        ]
+        missing: set[str] = set()
+        for model in models:
+            provider = model.split("/", 1)[0].strip().lower() if "/" in model else ""
+            if provider in provider_to_key and not provider_to_key[provider]:
+                missing.add(provider)
+        if missing:
+            missing_env = {
+                "gemini": "GEMINI_API_KEY",
+                "anthropic": "ANTHROPIC_API_KEY",
+                "openai": "OPENAI_API_KEY",
+            }
+            required = ", ".join(sorted(missing_env[p] for p in missing))
+            raise ValueError(f"Missing API keys for configured models. Set: {required}")
+
     @classmethod
     def load(cls) -> "FWMAConfig":
         """Load config from env vars + ~/.config/fwma/config.toml."""
@@ -43,11 +70,11 @@ class FWMAConfig(BaseModel):
         config_path = Path.home() / ".config" / "fwma" / "config.toml"
         if config_path.exists():
             try:
-                import tomllib
-            except ImportError:
-                import tomli as tomllib  # type: ignore[no-redef]
+                toml_module = importlib.import_module("tomllib")
+            except ModuleNotFoundError:
+                toml_module = importlib.import_module("tomli")
             with open(config_path, "rb") as f:
-                toml_data = tomllib.load(f)
+                toml_data = toml_module.load(f)
             if "models" in toml_data:
                 config_data["models"] = ModelsConfig(**toml_data["models"])
             for key in ("language", "openalex_mailto", "runs_root"):
