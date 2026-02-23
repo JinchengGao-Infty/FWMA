@@ -1,16 +1,70 @@
 """LLM provider implementations — Claude, Gemini, GPT, OpenAI-compatible."""
-
 from __future__ import annotations
-
 import copy
 import json
 import logging
 import os
+import time
 from typing import Any
-
 import requests
 
 logger = logging.getLogger(__name__)
+
+
+# ── Retry configuration ──────────────────────────────────────────────
+MAX_RETRIES = 3
+RETRY_BASE_DELAY = 2.0  # seconds, doubles each retry
+RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
+MIN_CALL_INTERVAL = 0.5  # seconds between LLM calls
+_last_call_time: dict[str, float] = {}  # per-provider timestamp
+
+
+def _rate_limit_wait(provider: str) -> None:
+    """Enforce minimum interval between calls to the same provider."""
+    now = time.time()
+    last = _last_call_time.get(provider, 0)
+    wait = MIN_CALL_INTERVAL - (now - last)
+    if wait > 0:
+        logger.debug(f"Rate limit: waiting {wait:.1f}s before calling {provider}")
+        time.sleep(wait)
+    _last_call_time[provider] = time.time()
+
+
+def _call_with_retry(
+    fn: callable,
+    provider: str,
+    *args: Any,
+    **kwargs: Any,
+) -> requests.Response:
+    """Execute HTTP call with exponential backoff retry on transient errors."""
+    _rate_limit_wait(provider)
+    last_exc = None
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            response = fn(*args, **kwargs)
+            if response.status_code in RETRY_STATUS_CODES:
+                delay = RETRY_BASE_DELAY * (2 ** attempt)
+                logger.warning(
+                    f"{provider} returned {response.status_code}, "
+                    f"retry {attempt + 1}/{MAX_RETRIES} in {delay:.0f}s"
+                )
+                if attempt < MAX_RETRIES:
+                    time.sleep(delay)
+                    continue
+                response.raise_for_status()
+            return response
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            last_exc = e
+            delay = RETRY_BASE_DELAY * (2 ** attempt)
+            logger.warning(
+                f"{provider} {type(e).__name__}, "
+                f"retry {attempt + 1}/{MAX_RETRIES} in {delay:.0f}s"
+            )
+            if attempt < MAX_RETRIES:
+                time.sleep(delay)
+                continue
+            raise
+    raise last_exc or RuntimeError(f"{provider} call failed after {MAX_RETRIES} retries")
 
 # Default base URLs
 DEFAULT_URLS = {
@@ -90,8 +144,8 @@ def call_anthropic(
                 break
 
     logger.debug(f"Calling Anthropic: {model}")
-    response = requests.post(url, headers=headers, json=payload, timeout=120)
-    response.raise_for_status()
+    response = _call_with_retry(requests.post, "anthropic", url, headers=headers, json=payload, timeout=120)
+
     data = response.json()
 
     if "error" in data:
@@ -127,14 +181,11 @@ def call_gemini_native(
         payload["system_instruction"] = {"parts": [{"text": system_prompt}]}
 
     logger.debug(f"Calling Gemini native: {model}")
-    response = requests.post(
-        url,
+    response = _call_with_retry(
+        requests.post, "gemini", url,
         headers={"Content-Type": "application/json"},
-        json=payload,
-        timeout=120,
-        stream=True,
+        json=payload, timeout=120, stream=True,
     )
-    response.raise_for_status()
 
     # Parse SSE stream
     full_text = []
@@ -200,8 +251,7 @@ def call_openai_format(
     }
 
     logger.debug(f"Calling OpenAI-format: {model} at {url}")
-    response = requests.post(url, headers=headers, json=payload, timeout=120)
-    response.raise_for_status()
+    response = _call_with_retry(requests.post, provider, url, headers=headers, json=payload, timeout=120)
     data = response.json()
 
     if "error" in data:
@@ -261,8 +311,7 @@ def call_gemini_structured(
                 },
             }
 
-            response = requests.post(url, headers=headers, json=payload, timeout=120)
-            response.raise_for_status()
+            response = _call_with_retry(requests.post, "gemini", url, headers=headers, json=payload, timeout=120)
             data = response.json()
             content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
 
@@ -291,13 +340,11 @@ def call_gemini_structured(
     if hasattr(response_format, "model_json_schema"):
         payload_native["generationConfig"]["responseSchema"] = response_format.model_json_schema()
 
-    response = requests.post(
-        url,
+    response = _call_with_retry(
+        requests.post, "gemini", url,
         headers={"Content-Type": "application/json"},
-        json=payload_native,
-        timeout=120,
+        json=payload_native, timeout=120,
     )
-    response.raise_for_status()
     data = response.json()
 
     content = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
