@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.jpeg" alt="FWMA Logo" width="300">
+</p>
+
 # 🏛️ FWMA — Full-Workflow Multi-Agent Literature Review
 
 AI Parliament-driven end-to-end systematic literature review automation.
