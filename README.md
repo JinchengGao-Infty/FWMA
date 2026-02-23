@@ -4,6 +4,15 @@ AI Parliament-driven end-to-end systematic literature review automation.
 
 > FWMA automates systematic literature review end-to-end, using an **AI Parliament** — a structured multi-agent debate — to evaluate papers with transparent, auditable justifications.
 
+*(Pronounced "Foo-mah" /fú mǎ/)*
+
+**F**lesh is **W**eak, **M**achine **A**scension. 
+Go to sleep. Let FWMA read 100+ papers overnight and hand you a fully structured, comprehensive research report by morning.
+
+Will FWMA replace researchers?
+
+No. FWMA is designed to be a tireless research assistant. It helps researchers conduct literature reviews much more comprehensively and rapidly, handling the heavy lifting of reading and screening so you can focus on actual scientific innovation.
+
 ## Skip Reading This — It's the Age of AI
 
 Just paste this into any LLM or agent and let it explain + set you up:
