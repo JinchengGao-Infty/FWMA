@@ -47,16 +47,21 @@ class Screener:
         for i in range(0, len(papers), batch_size):
             batch = papers[i : i + batch_size]
             logger.info(f"Screening batch {i // batch_size + 1} ({len(batch)} papers)")
+            # Assign temporary IDs for matching if papers lack 'id'
+            for idx, paper in enumerate(batch):
+                if not paper.get('id'):
+                    paper['_screen_id'] = str(i + idx)
 
+            # Build papers text for prompt
             papers_text = ""
             for idx, paper in enumerate(batch):
-                papers_text += f"\n--- Paper {idx + 1} (ID: {paper.get('id', idx)}) ---\n"
+                pid = paper.get('id', paper.get('_screen_id', idx))
+                papers_text += f"\n--- Paper {idx + 1} (ID: {pid}) ---\n"
                 papers_text += f"Title: {paper.get('title', 'N/A')}\n"
                 papers_text += f"Authors: {', '.join(paper.get('authors', []))}\n"
                 papers_text += f"Year: {paper.get('year', 'N/A')}\n"
                 papers_text += f"Abstract: {paper.get('abstract', 'N/A')}\n"
-
-            prompt = Step2Prompts.get_screening_prompt(requirement, papers_text)
+            prompt = Step2Prompts.get_screening_prompt(papers_text, requirement)
 
             try:
                 response = self.client.call(
@@ -64,38 +69,41 @@ class Screener:
                     messages=[{"role": "user", "content": prompt}],
                 )
                 result = parse_json_response(response)
-
-                if isinstance(result, dict) and "selected_papers" in result:
-                    selected = result["selected_papers"]
+                if isinstance(result, dict):
+                    selected = result.get("selected_papers", [])
                 elif isinstance(result, list):
                     selected = result
                 else:
                     logger.warning(f"Unexpected screening response format: {type(result)}")
                     selected = []
-
-                # Match selected papers back to full paper info
                 for sel in selected:
-                    paper_id = sel.get("id") or sel.get("paper_id")
+                    paper_id = sel.get("id") or sel.get("paper_id") or sel.get("index")
                     relevance = sel.get("relevance", "medium")
-
-                    # Apply threshold filter
                     if threshold == "high_only" and relevance != "high":
                         continue
                     if threshold == "high_medium" and relevance not in ("high", "medium"):
                         continue
 
-                    # Find matching paper
-                    matching = [p for p in batch if str(p.get("id")) == str(paper_id)]
+                    # Find matching paper by id or _screen_id
+                    matching = [
+                        p for p in batch
+                        if str(p.get("id") or p.get("_screen_id", "")) == str(paper_id)
+                    ]
                     if matching:
                         paper_info = matching[0].copy()
+                        paper_info.pop('_screen_id', None)
                         paper_info["relevance"] = relevance
                         paper_info["screening_reason"] = sel.get("reason", "")
-                        all_selected.append(paper_info)
-
+                        all_selected.append({"paper": paper_info, "relevance": relevance, "reason": sel.get("reason", "")})
+                    else:
+                        logger.debug(f"No match for paper_id={paper_id}")
             except Exception as e:
                 logger.error(f"Screening batch failed: {e}")
                 continue
 
+        # Clean up temp IDs from original papers
+        for p in papers:
+            p.pop('_screen_id', None)
         logger.info(f"Screening complete: {len(all_selected)} papers selected from {len(papers)} total")
         return all_selected
 

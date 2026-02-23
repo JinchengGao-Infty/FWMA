@@ -59,8 +59,9 @@ class ReportGenerator:
             )
 
         prompt = Step5Prompts.get_report_prompt(
-            reviews=review_summaries,
+            all_reviews=review_summaries,
             user_requirement=requirement,
+            num_papers=len(reviews),
         )
 
         messages = [{"role": "user", "content": prompt}]

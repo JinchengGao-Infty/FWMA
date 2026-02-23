@@ -62,7 +62,7 @@ class ResearchPipeline:
             member1_model=member1_model,
             member2_model=member2_model,
         )
-        self.report_gen = ReportGenerator()
+        self.report_gen = ReportGenerator(model=chair_model)
         self.openalex_mailto = openalex_mailto or os.environ.get("OPENALEX_MAILTO", "")
         self.cookies_file = cookies_file
 
@@ -168,25 +168,25 @@ class ResearchPipeline:
 
         if source_type == "openalex":
             crawler = OpenAlexCrawler(mailto=self.openalex_mailto)
-            return crawler.crawl(
+            return crawler.fetch_papers(
                 keywords=query.get("keywords", []),
-                year_from=query.get("year_from") or query.get("year_min"),
-                year_to=query.get("year_to") or query.get("year_max"),
+                year_min=query.get("year_from") or query.get("year_min"),
+                year_max=query.get("year_to") or query.get("year_max"),
                 fields=query.get("fields"),
                 limit=query.get("limit", 200),
-                oa_only=query.get("open_access", False),
+                open_access=query.get("open_access", False),
             )
         elif source_type == "arxiv":
             crawler = ArxivCrawler()
-            return crawler.crawl(
+            return crawler.fetch_papers(
                 keywords=query.get("keywords", []),
                 categories=query.get("categories"),
-                year_from=query.get("year_from") or query.get("year_min"),
+                year_min=query.get("year_from") or query.get("year_min"),
                 limit=query.get("limit", 200),
             )
         elif source_type == "openreview":
             crawler = OpenReviewCrawler()
-            return crawler.crawl(
+            return crawler.fetch_papers(
                 venue=query.get("venue"),
                 keywords=query.get("keywords"),
                 limit=query.get("limit", 200),
@@ -246,10 +246,9 @@ class ResearchPipeline:
         pdf_dir = self.download_dir / "pdfs"
         downloader = PDFDownloader(
             output_dir=pdf_dir,
-            concurrency=concurrency,
             cookies_file=self.cookies_file,
         )
-        results = downloader.download(to_download, on_progress=on_progress)
+        results = downloader.download_batch(to_download, num_threads=concurrency, on_progress=on_progress)
 
         # Merge with existing
         all_downloaded = existing + results.get("downloaded", [])
