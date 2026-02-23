@@ -33,3 +33,6 @@ runs/
 .pytest_cache/
 htmlcov/
 .coverage
+# Private project files (contains API keys/endpoints)
+.pfiles/
+.ccx/
