@@ -20,7 +20,7 @@ Just paste this into any LLM or agent and let it explain + set you up:
 ```
 Read this README and the linked docs to understand what FWMA does and how to
 set it up. Then help me configure API keys and run my first literature review:
-https://raw.githubusercontent.com/gaojincheng/FWMA/refs/heads/main/README.md
+https://raw.githubusercontent.com/JinchengGao-Infty/FWMA/refs/heads/main/README.md
 ```
 
 <details>
