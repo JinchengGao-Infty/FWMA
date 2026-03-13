@@ -209,7 +209,7 @@ class ResearchPipeline:
     # Step 2: Screen papers
     # ------------------------------------------------------------------
     def screen(self, papers: list[dict], requirement: str, threshold: str = "high_medium") -> list[dict]:
-        """Screen papers for relevance."""
+        """Screen papers for relevance with incremental saves."""
         screened_path = self.screen_dir / "screened_papers.json"
 
         existing = []
@@ -220,17 +220,28 @@ class ResearchPipeline:
                 logger.info("Screening already complete, loading")
                 return existing
 
-        results = self.screener.screen(
-            papers=papers,
-            requirement=requirement,
-            threshold=threshold,
-            existing_results=existing,
-        )
+        # Use incremental screening: save after each batch
+        screened_ids = {p.get("paper", {}).get("id") or p.get("id") for p in existing}
+        remaining = [p for p in papers if p.get("id") not in screened_ids]
+        all_selected = list(existing)
+        batch_size = 50
 
-        with open(screened_path, "w", encoding="utf-8") as f:
-            json.dump(results, f, ensure_ascii=False, indent=2)
-        logger.info(f"Screening complete: {len(results)} papers selected")
-        return results
+        for i in range(0, len(remaining), batch_size):
+            batch = remaining[i : i + batch_size]
+            batch_results = self.screener.screen(
+                papers=batch,
+                requirement=requirement,
+                threshold=threshold,
+            )
+            all_selected.extend(batch_results)
+
+            # Save after each batch (crash-safe)
+            with open(screened_path, "w", encoding="utf-8") as f:
+                json.dump(all_selected, f, ensure_ascii=False, indent=2)
+            logger.info(f"Screening progress: {min(i + batch_size, len(remaining))}/{len(remaining)} papers, {len(all_selected)} selected so far")
+
+        logger.info(f"Screening complete: {len(all_selected)} papers selected")
+        return all_selected
 
     # ------------------------------------------------------------------
     # Step 3: Download PDFs
