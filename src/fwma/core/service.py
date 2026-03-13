@@ -379,7 +379,15 @@ class FWMAService:
         screened_file = self.run_manager.runs_root / run_id / "screen" / "screened_papers.json"
         if not screened_file.exists():
             raise ValueError(f"No screened papers for run {run_id}. Run screen first.")
-        papers = json.loads(screened_file.read_text(encoding="utf-8"))
+        screened = json.loads(screened_file.read_text(encoding="utf-8"))
+        # Extract nested paper objects — screened format is {id, relevance, reason, paper: {...}}
+        papers = []
+        for entry in screened:
+            paper = entry.get("paper", entry)
+            # Carry over relevance for downstream filtering
+            if "relevance" not in paper and "relevance" in entry:
+                paper["relevance"] = entry["relevance"]
+            papers.append(paper)
         job_id = f"job_download_{uuid.uuid4().hex[:8]}"
 
         def on_progress(current: int, total: int) -> None:

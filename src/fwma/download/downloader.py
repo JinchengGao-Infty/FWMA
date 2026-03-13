@@ -85,7 +85,7 @@ class PDFDownloader:
                     result = future.result()
                     if result:
                         stats["success"] += 1
-                        stats["downloaded"].append({**paper, "pdf_path": str(result)})
+                        stats["downloaded"].append({**paper, "local_path": str(result)})
                     else:
                         stats["failed"] += 1
                 except Exception as e:
