@@ -40,7 +40,7 @@ class Screener:
             concurrency: Number of batches to screen in parallel.
         """
         if existing_results:
-            screened_ids = {p.get("id") for p in existing_results}
+            screened_ids = {p.get("paper", {}).get("id") or p.get("id") for p in existing_results} - {None}
             papers = [p for p in papers if p.get("id") not in screened_ids]
             logger.info(f"Resume: skipping {len(screened_ids)} already screened papers")
 
