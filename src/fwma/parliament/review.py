@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable
 
@@ -90,6 +91,7 @@ def review_batch(
     vision_model: str = "gemini/gemini-2.0-flash",
     max_papers: int | None = None,
     on_progress: Callable[[int, int], None] | None = None,
+    concurrency: int = 3,
 ) -> list[dict]:
     """Review multiple papers with resume support.
 
@@ -102,6 +104,7 @@ def review_batch(
         vision_model: Model for PDF visual extraction
         max_papers: Maximum papers to review
         on_progress: Callback(current, total) for progress reporting
+        concurrency: Number of concurrent review threads (default 3)
 
     Returns:
         List of review result dicts
@@ -117,45 +120,52 @@ def review_batch(
         pdf_dir = Path(pdf_dir)
 
     papers_to_review = papers[:max_papers] if max_papers else papers
-    results = []
+
+    # Separate already-reviewed (resume) from pending
+    resumed_results: dict[int, dict] = {}
+    pending: list[tuple[int, dict]] = []
 
     for i, paper in enumerate(papers_to_review):
         title = paper.get("title", "unknown")
         safe_title = "".join(c if c.isalnum() or c in " -_" else "" for c in title)[:80]
 
-        # Resume: skip if already reviewed
         if reviews_dir:
             review_path = reviews_dir / f"{safe_title}.json"
             if review_path.exists():
                 logger.info(f"[{i + 1}/{len(papers_to_review)}] Skipping (already reviewed): {title[:60]}")
                 try:
                     with open(review_path, "r", encoding="utf-8") as f:
-                        results.append(json.load(f))
+                        resumed_results[i] = json.load(f)
                     if on_progress:
                         on_progress(i + 1, len(papers_to_review))
                     continue
                 except Exception:
                     pass  # Re-review if JSON is corrupted
 
-        logger.info(f"[{i + 1}/{len(papers_to_review)}] Reviewing: {title[:60]}")
+        pending.append((i, paper))
 
-        # Find PDF
-        pdf_path = None
-        if pdf_dir:
-            pdf_path = paper.get("pdf_path")
-            if pdf_path:
-                pdf_path = Path(pdf_path)
-                if not pdf_path.exists():
-                    pdf_path = pdf_dir / pdf_path.name
-            if not pdf_path or not pdf_path.exists():
-                # Try to find by title
-                for ext in [".pdf"]:
-                    candidate = pdf_dir / f"{safe_title}{ext}"
-                    if candidate.exists():
-                        pdf_path = candidate
-                        break
+    def _find_pdf(paper: dict, safe_title: str) -> Path | None:
+        if not pdf_dir:
+            return None
+        pdf_path = paper.get("pdf_path")
+        if pdf_path:
+            pdf_path = Path(pdf_path)
+            if not pdf_path.exists():
+                pdf_path = pdf_dir / pdf_path.name
+        if not pdf_path or not pdf_path.exists():
+            candidate = pdf_dir / f"{safe_title}.pdf"
+            if candidate.exists():
+                return candidate
+            return None
+        return pdf_path
+
+    def _review_one(idx: int, paper: dict) -> tuple[int, dict]:
+        title = paper.get("title", "unknown")
+        safe_title = "".join(c if c.isalnum() or c in " -_" else "" for c in title)[:80]
+        logger.info(f"[{idx + 1}/{len(papers_to_review)}] Reviewing: {title[:60]}")
 
         try:
+            pdf_path = _find_pdf(paper, safe_title)
             result = review_paper(
                 paper=paper,
                 user_requirement=user_requirement,
@@ -163,24 +173,31 @@ def review_batch(
                 pdf_path=pdf_path,
                 vision_model=vision_model,
             )
-            results.append(result)
-
-            # Save individual review
             if reviews_dir:
                 with open(reviews_dir / f"{safe_title}.json", "w", encoding="utf-8") as f:
                     json.dump(result, f, ensure_ascii=False, indent=2)
-
         except Exception as e:
             logger.error(f"Review failed for '{title[:60]}': {e}")
-            results.append(
-                {
-                    "paper_info": {"title": title, "error": str(e)},
-                    "debate_history": [],
-                    "final_verdict": {"error": str(e)},
-                }
-            )
+            result = {
+                "paper_info": {"title": title, "error": str(e)},
+                "debate_history": [],
+                "final_verdict": {"error": str(e)},
+            }
+        return idx, result
 
-        if on_progress:
-            on_progress(i + 1, len(papers_to_review))
+    # Run reviews concurrently
+    concurrent_results: dict[int, dict] = {}
+    completed_count = len(resumed_results)
 
-    return results
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        futures = {executor.submit(_review_one, idx, paper): idx for idx, paper in pending}
+        for future in as_completed(futures):
+            idx, result = future.result()
+            concurrent_results[idx] = result
+            completed_count += 1
+            if on_progress:
+                on_progress(completed_count, len(papers_to_review))
+
+    # Merge results in original order
+    all_results: dict[int, dict] = {**resumed_results, **concurrent_results}
+    return [all_results[i] for i in sorted(all_results)]

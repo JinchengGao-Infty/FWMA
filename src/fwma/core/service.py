@@ -347,7 +347,7 @@ class FWMAService:
         papers = pipeline.crawl(run_config.get("sources", []))
         return {"run_id": run_id, "papers_count": len(papers), "papers": papers[:5]}
 
-    def screen(self, run_id: str, threshold: str = "high_medium") -> dict[str, Any]:
+    def screen(self, run_id: str, threshold: str = "high_medium", concurrency: int = 3) -> dict[str, Any]:
         pipeline = self.run_manager.get_pipeline(run_id)
         run_config = self.run_manager.get_run(run_id)
         requirement = str(run_config["requirement"])
@@ -355,7 +355,7 @@ class FWMAService:
         if not papers_file.exists():
             raise ValueError(f"No crawled papers found for run {run_id}. Run crawl first.")
         papers = json.loads(papers_file.read_text(encoding="utf-8"))
-        screened = pipeline.screen(papers, requirement, threshold)
+        screened = pipeline.screen(papers, requirement, threshold, concurrency=concurrency)
         return {"run_id": run_id, "screened_count": len(screened), "threshold": threshold}
 
     def run_status(self, run_id: str) -> dict[str, Any]:
@@ -395,7 +395,7 @@ class FWMAService:
             job_id=job_id,
         )
 
-    def review_async(self, run_id: str, max_rounds: int = 5) -> str:
+    def review_async(self, run_id: str, max_rounds: int = 5, concurrency: int = 3) -> str:
         pipeline = self.run_manager.get_pipeline(run_id)
         run_config = self.run_manager.get_run(run_id)
         requirement = str(run_config["requirement"])
@@ -416,6 +416,7 @@ class FWMAService:
             requirement,
             max_rounds,
             on_progress=on_progress,
+            concurrency=concurrency,
             job_id=job_id,
         )
 

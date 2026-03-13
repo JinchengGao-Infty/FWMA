@@ -208,7 +208,9 @@ class ResearchPipeline:
     # ------------------------------------------------------------------
     # Step 2: Screen papers
     # ------------------------------------------------------------------
-    def screen(self, papers: list[dict], requirement: str, threshold: str = "high_medium") -> list[dict]:
+    def screen(
+        self, papers: list[dict], requirement: str, threshold: str = "high_medium", concurrency: int = 3
+    ) -> list[dict]:
         """Screen papers for relevance with incremental saves."""
         screened_path = self.screen_dir / "screened_papers.json"
 
@@ -232,13 +234,16 @@ class ResearchPipeline:
                 papers=batch,
                 requirement=requirement,
                 threshold=threshold,
+                concurrency=concurrency,
             )
             all_selected.extend(batch_results)
 
             # Save after each batch (crash-safe)
             with open(screened_path, "w", encoding="utf-8") as f:
                 json.dump(all_selected, f, ensure_ascii=False, indent=2)
-            logger.info(f"Screening progress: {min(i + batch_size, len(remaining))}/{len(remaining)} papers, {len(all_selected)} selected so far")
+            logger.info(
+                f"Screening progress: {min(i + batch_size, len(remaining))}/{len(remaining)} papers, {len(all_selected)} selected so far"
+            )
 
         logger.info(f"Screening complete: {len(all_selected)} papers selected")
         return all_selected
@@ -284,58 +289,33 @@ class ResearchPipeline:
     # Step 4: Review papers with AI Parliament
     # ------------------------------------------------------------------
     def review(
-        self, papers: list[dict], requirement: str, max_rounds: int = 5, on_progress: Callable | None = None
+        self,
+        papers: list[dict],
+        requirement: str,
+        max_rounds: int = 5,
+        on_progress: Callable | None = None,
+        concurrency: int = 3,
     ) -> list[dict]:
         """Review papers using AI Parliament debate."""
-        # Filter papers with PDFs
+        from fwma.parliament.review import review_batch
+
         papers_with_pdf = [p for p in papers if p.get("local_path")]
         if not papers_with_pdf:
             logger.warning("No papers with PDFs to review")
             return []
 
-        # Resume: check existing reviews
-        existing_reviews = []
-        reviewed_ids = set()
-        for review_file in self.review_dir.glob("*_review.json"):
-            try:
-                with open(review_file) as f:
-                    review = json.load(f)
-                    existing_reviews.append(review)
-                    paper_id = review.get("paper_info", {}).get("id", "")
-                    if paper_id:
-                        reviewed_ids.add(str(paper_id))
-            except Exception:
-                continue
+        results = review_batch(
+            papers=papers_with_pdf,
+            user_requirement=requirement,
+            parliament=self.parliament,
+            pdf_dir=self.download_dir / "pdfs",
+            reviews_dir=self.review_dir,
+            on_progress=on_progress,
+            concurrency=concurrency,
+        )
 
-        to_review = [p for p in papers_with_pdf if str(p.get("id")) not in reviewed_ids]
-        logger.info(f"Reviewing {len(to_review)} papers ({len(reviewed_ids)} already done)")
-
-        for idx, paper in enumerate(to_review):
-            logger.info(f"Reviewing paper {idx + 1}/{len(to_review)}: {paper.get('title', 'Unknown')[:60]}")
-            try:
-                pdf_path = Path(paper["local_path"])
-                result = review_paper(
-                    paper=paper,
-                    user_requirement=requirement,
-                    parliament=self.parliament,
-                    pdf_path=pdf_path,
-                )
-
-                # Save per-paper review
-                paper_id = paper.get("id", f"paper_{idx}")
-                review_path = self.review_dir / f"{paper_id}_review.json"
-                with open(review_path, "w", encoding="utf-8") as f:
-                    json.dump(result, f, ensure_ascii=False, indent=2)
-
-                existing_reviews.append(result)
-            except Exception as e:
-                logger.error(f"Review failed for {paper.get('title', 'Unknown')}: {e}")
-
-            if on_progress:
-                on_progress(idx + 1, len(to_review))
-
-        logger.info(f"Review complete: {len(existing_reviews)} papers reviewed")
-        return existing_reviews
+        logger.info(f"Review complete: {len(results)} papers reviewed")
+        return results
 
     # ------------------------------------------------------------------
     # Step 5: Generate report
@@ -366,6 +346,8 @@ class ResearchPipeline:
         threshold: str = "high_medium",
         max_papers: int | None = None,
         concurrency: int = 8,
+        screen_concurrency: int = 3,
+        review_concurrency: int = 3,
         max_rounds: int = 5,
         on_progress: Callable | None = None,
     ) -> dict:
@@ -382,7 +364,7 @@ class ResearchPipeline:
         papers = self.crawl(sources, on_progress=on_progress)
 
         # Step 2: Screen
-        screened = self.screen(papers, requirement, threshold)
+        screened = self.screen(papers, requirement, threshold, concurrency=screen_concurrency)
 
         # Step 3: Download
         if max_papers:
@@ -390,7 +372,9 @@ class ResearchPipeline:
         downloaded = self.download(screened, concurrency, on_progress=on_progress)
 
         # Step 4: Review
-        reviews = self.review(downloaded, requirement, max_rounds, on_progress=on_progress)
+        reviews = self.review(
+            downloaded, requirement, max_rounds, on_progress=on_progress, concurrency=review_concurrency
+        )
 
         # Step 5: Report
         report_content = self.report(reviews, requirement)

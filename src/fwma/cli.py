@@ -240,6 +240,7 @@ def crawl(
 def screen(
     run_dir: Path = typer.Option(Path("."), help="Run directory path"),
     threshold: str = typer.Option("high_medium", help="Screening threshold (high_only, high_medium, all_selected)"),
+    concurrency: int = typer.Option(3, help="Concurrent screening tasks"),
 ):
     """Screen papers for relevance using AI."""
     _load_config()
@@ -247,7 +248,7 @@ def screen(
 
     service = FWMAService()
     run_id = _extract_run_id(run_dir)
-    result = service.screen(run_id, threshold=threshold)
+    result = service.screen(run_id, threshold=threshold, concurrency=concurrency)
     _print_dict("Screen Result", result)
 
 
@@ -274,6 +275,7 @@ def review(
     run_dir: Path = typer.Option(Path("."), help="Run directory path"),
     rounds: int = typer.Option(5, help="Max debate rounds"),
     resume: bool = typer.Option(True, help="Skip already reviewed"),
+    concurrency: int = typer.Option(3, help="Number of parallel reviews"),
 ):
     """Review papers with AI Parliament debate."""
     del resume
@@ -282,7 +284,7 @@ def review(
 
     service = FWMAService()
     run_id = _extract_run_id(run_dir)
-    job_id = service.review_async(run_id, max_rounds=rounds)
+    job_id = service.review_async(run_id, max_rounds=rounds, concurrency=concurrency)
     _wait_for_job(service, job_id, "AI Parliament review")
     _show_run_status(service, run_id)
 

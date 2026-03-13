@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from fwma.core.utils import parse_json_response
 from fwma.llm.client import LLMClient
@@ -26,6 +27,7 @@ class Screener:
         threshold: str = "high_medium",
         batch_size: int = 50,
         existing_results: list[dict] | None = None,
+        concurrency: int = 3,
     ) -> list[dict]:
         """Screen papers for relevance. Returns filtered results.
 
@@ -35,6 +37,7 @@ class Screener:
             threshold: 'high_only', 'high_medium', or 'all_selected'.
             batch_size: Number of papers per LLM call.
             existing_results: Previously screened results for resume.
+            concurrency: Number of batches to screen in parallel.
         """
         if existing_results:
             screened_ids = {p.get("id") for p in existing_results}
@@ -43,53 +46,61 @@ class Screener:
 
         all_selected = list(existing_results or [])
 
+        # Prepare batches
+        batches = []
         for i in range(0, len(papers), batch_size):
             batch = papers[i : i + batch_size]
-            logger.info(f"Screening batch {i // batch_size + 1} ({len(batch)} papers)")
-            # Assign temporary IDs for matching if papers lack 'id'
             for idx, paper in enumerate(batch):
                 if not paper.get("id"):
                     paper["_screen_id"] = str(i + idx)
+            batches.append((i // batch_size + 1, batch))
 
+        def _screen_batch(batch_num: int, batch: list[dict]) -> list[dict]:
+            logger.info(f"Screening batch {batch_num}/{len(batches)} ({len(batch)} papers)")
             prompt = Step2Prompts.get_screening_prompt(batch, requirement)
+            response = self.client.call(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                system_prompt=SCREENER_PROMPT,
+            )
+            result = parse_json_response(response)
+            if isinstance(result, dict):
+                selected = result.get("selected_papers", [])
+            elif isinstance(result, list):
+                selected = result
+            else:
+                logger.warning(f"Unexpected screening response format: {type(result)}")
+                return []
 
-            try:
-                response = self.client.call(
-                    model=self.model,
-                    messages=[{"role": "user", "content": prompt}],
-                    system_prompt=SCREENER_PROMPT,
-                )
-                result = parse_json_response(response)
-                if isinstance(result, dict):
-                    selected = result.get("selected_papers", [])
-                elif isinstance(result, list):
-                    selected = result
+            batch_results = []
+            for sel in selected:
+                paper_id = sel.get("id") or sel.get("paper_id") or sel.get("index")
+                relevance = sel.get("relevance", "medium")
+                if threshold == "high_only" and relevance != "high":
+                    continue
+                if threshold == "high_medium" and relevance not in ("high", "medium"):
+                    continue
+                matching = [p for p in batch if str(p.get("id") or p.get("_screen_id", "")) == str(paper_id)]
+                if matching:
+                    paper_info = matching[0].copy()
+                    paper_info.pop("_screen_id", None)
+                    paper_info["relevance"] = relevance
+                    paper_info["screening_reason"] = sel.get("reason", "")
+                    batch_results.append({"paper": paper_info, "relevance": relevance, "reason": sel.get("reason", "")})
                 else:
-                    logger.warning(f"Unexpected screening response format: {type(result)}")
-                    selected = []
-                for sel in selected:
-                    paper_id = sel.get("id") or sel.get("paper_id") or sel.get("index")
-                    relevance = sel.get("relevance", "medium")
-                    if threshold == "high_only" and relevance != "high":
-                        continue
-                    if threshold == "high_medium" and relevance not in ("high", "medium"):
-                        continue
+                    logger.debug(f"No match for paper_id={paper_id}")
+            return batch_results
 
-                    # Find matching paper by id or _screen_id
-                    matching = [p for p in batch if str(p.get("id") or p.get("_screen_id", "")) == str(paper_id)]
-                    if matching:
-                        paper_info = matching[0].copy()
-                        paper_info.pop("_screen_id", None)
-                        paper_info["relevance"] = relevance
-                        paper_info["screening_reason"] = sel.get("reason", "")
-                        all_selected.append(
-                            {"paper": paper_info, "relevance": relevance, "reason": sel.get("reason", "")}
-                        )
-                    else:
-                        logger.debug(f"No match for paper_id={paper_id}")
-            except Exception as e:
-                logger.error(f"Screening batch failed: {e}")
-                continue
+        # Run batches concurrently
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = {executor.submit(_screen_batch, batch_num, batch): batch_num for batch_num, batch in batches}
+            for future in as_completed(futures):
+                batch_num = futures[future]
+                try:
+                    batch_results = future.result()
+                    all_selected.extend(batch_results)
+                except Exception as e:
+                    logger.error(f"Screening batch {batch_num} failed: {e}")
 
         # Clean up temp IDs from original papers
         for p in papers:
