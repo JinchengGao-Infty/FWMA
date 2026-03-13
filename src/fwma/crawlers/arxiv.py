@@ -39,7 +39,7 @@ class ArxivCrawler:
 
         search = arxiv.Search(
             query=query,
-            max_results=limit * 2,  # fetch extra to account for filtering
+            max_results=limit,  # don't over-fetch; filtering happens post-hoc
             sort_by=arxiv.SortCriterion.SubmittedDate,
         )
 

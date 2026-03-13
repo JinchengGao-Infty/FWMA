@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -154,6 +155,14 @@ class ResearchPipeline:
                 logger.info(f"Source {idx + 1}: {len(papers)} papers, {len(all_papers)} total after dedup")
             except Exception as e:
                 logger.error(f"Crawl source {idx + 1} failed: {e}")
+
+            # Rate limit: pause between arXiv sources to avoid 429
+            if source_type == "arxiv" and idx < len(sources) - 1:
+                next_type = sources[idx + 1].get("type", sources[idx + 1].get("crawler_type", ""))
+                if next_type == "arxiv":
+                    delay = 5.0
+                    logger.debug(f"Rate limit: waiting {delay}s between arXiv sources")
+                    time.sleep(delay)
 
             if on_progress:
                 on_progress(idx + 1, len(sources))

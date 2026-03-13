@@ -1,0 +1,170 @@
+# HS-KAN VI 版本文献调研（v2 — 全 arXiv）
+#
+# 背景：HS-KAN 将 Horseshoe 先验用于 KAN 的结构化剪枝。MAP 已完成，VI 作扩展。
+# VI 核心价值：(1) PIP/SAVS 后验剪枝 (2) 预测不确定性量化
+#
+# arXiv 搜索注意：关键词用 AND 连接，词太多会空结果。保持 2-3 个核心词。
+
+[research]
+name = "hskan-vi-survey-v2"
+requirement = """
+调研 HS-KAN 的 VI（变分推断）扩展所需的 related work：
+
+1. Horseshoe prior + variational inference（理论 + 工程）
+2. Bayesian / Variational KAN（直接竞品）
+3. Bayesian neural network pruning（VI 做剪枝）
+4. Uncertainty quantification in deep learning
+5. Shrinkage priors in deep learning
+6. Bayesian methods in finance（信用评分、因子选择、风控）
+"""
+
+[policy]
+max_papers_crawl = 500
+oa_only = false
+
+[models]
+screener = "openai/gpt-5.4"
+chair = "gemini/gemini-3.1-pro-preview"
+member1 = "anthropic/claude-opus-4-6"
+member2 = "openai/gpt-5.4"
+report = "gemini/gemini-3.1-pro-preview"
+
+# ═══ Block A: Horseshoe + VI 理论与工程 ═══
+
+# Horseshoe + variational inference
+[[sources]]
+type = "arxiv"
+[sources.query]
+categories = ["stat.ML", "cs.LG"]
+keywords = ["horseshoe variational inference"]
+max_results = 80
+
+# Horseshoe prior sparsity（更宽泛）
+[[sources]]
+type = "arxiv"
+[sources.query]
+categories = ["stat.ML", "stat.ME"]
+keywords = ["horseshoe prior sparsity"]
+max_results = 60
+
+# Non-centered parameterization（Fadeout 等）
+[[sources]]
+type = "arxiv"
+[sources.query]
+categories = ["stat.ML", "stat.CO"]
+keywords = ["non-centered parameterization variational"]
+max_results = 40
+
+# SAVS / posterior inclusion probability
+[[sources]]
+type = "arxiv"
+[sources.query]
+categories = ["stat.ML", "stat.ME"]
+keywords = ["posterior inclusion probability horseshoe"]
+max_results = 40
+
+# ═══ Block B: KAN + Bayesian/Variational ═══
+
+# Kolmogorov-Arnold Network Bayesian
+[[sources]]
+type = "arxiv"
+[sources.query]
+categories = ["cs.LG", "stat.ML"]
+keywords = ["Kolmogorov-Arnold Network"]
+max_results = 100
+
+# KAN uncertainty
+[[sources]]
+type = "arxiv"
+[sources.query]
+categories = ["cs.LG", "stat.ML"]
+keywords = ["KAN network pruning"]
+max_results = 50
+
+# ═══ Block C: Bayesian Pruning / Sparsification ═══
+
+# Bayesian pruning neural network
+[[sources]]
+type = "arxiv"
+[sources.query]
+categories = ["cs.LG", "stat.ML"]
+keywords = ["Bayesian pruning neural network"]
+max_results = 60
+
+# Variational dropout sparsity
+[[sources]]
+type = "arxiv"
+[sources.query]
+categories = ["cs.LG", "stat.ML"]
+keywords = ["variational dropout sparsity"]
+max_results = 50
+
+# Structured sparsity Bayesian
+[[sources]]
+type = "arxiv"
+[sources.query]
+categories = ["cs.LG", "stat.ML"]
+keywords = ["structured sparsity Bayesian deep learning"]
+max_results = 40
+
+# ═══ Block D: Shrinkage Priors ═══
+
+# Shrinkage prior deep learning
+[[sources]]
+type = "arxiv"
+[sources.query]
+categories = ["stat.ML", "cs.LG"]
+keywords = ["shrinkage prior neural network"]
+max_results = 50
+
+# Finnish horseshoe / R2D2 / regularized horseshoe
+[[sources]]
+type = "arxiv"
+[sources.query]
+categories = ["stat.ML", "stat.ME"]
+keywords = ["regularized horseshoe prior"]
+max_results = 40
+
+# ═══ Block E: Uncertainty Quantification ═══
+
+# Bayesian deep learning uncertainty
+[[sources]]
+type = "arxiv"
+[sources.query]
+categories = ["cs.LG", "stat.ML"]
+keywords = ["Bayesian deep learning uncertainty quantification"]
+max_results = 60
+
+# Epistemic uncertainty calibration
+[[sources]]
+type = "arxiv"
+[sources.query]
+categories = ["cs.LG", "stat.ML"]
+keywords = ["epistemic uncertainty calibration neural"]
+max_results = 40
+
+# ═══ Block F: Fintech / Finance ═══
+
+# Bayesian credit scoring
+[[sources]]
+type = "arxiv"
+[sources.query]
+categories = ["q-fin.RM", "cs.LG", "stat.AP"]
+keywords = ["Bayesian credit scoring"]
+max_results = 40
+
+# Bayesian factor selection
+[[sources]]
+type = "arxiv"
+[sources.query]
+categories = ["q-fin.ST", "q-fin.PM", "stat.ML"]
+keywords = ["Bayesian factor selection"]
+max_results = 40
+
+# Uncertainty quantification finance
+[[sources]]
+type = "arxiv"
+[sources.query]
+categories = ["q-fin.RM", "q-fin.ST", "cs.LG"]
+keywords = ["uncertainty quantification finance"]
+max_results = 40
