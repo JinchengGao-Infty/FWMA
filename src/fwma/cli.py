@@ -16,6 +16,8 @@ from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+ALL_STEPS = ("crawl", "screen", "download", "review", "report")
+
 app = typer.Typer(
     name="fwma",
     help="AI Parliament-driven systematic literature review.",
@@ -299,6 +301,165 @@ def report(
     job_id = service.report_async(run_id, format=format)
     _wait_for_job(service, job_id, "Generating report")
     _show_run_status(service, run_id)
+
+
+@app.command(name="runs")
+def list_runs(
+    runs_root: Path = typer.Option(None, "--runs-root", help="Runs root directory"),
+) -> None:
+    """List all research runs."""
+    _load_config()
+    from fwma.core.service import FWMAService
+
+    service = FWMAService(runs_root=runs_root)
+    runs = service.run_manager.list_runs()
+    if not runs:
+        console.print("[dim]No runs found.[/dim]")
+        return
+
+    table = Table(title="Research Runs")
+    table.add_column("Run ID", style="bold cyan")
+    table.add_column("Name")
+    table.add_column("Created")
+    table.add_column("Crawl", justify="center")
+    table.add_column("Screen", justify="center")
+    table.add_column("Download", justify="center")
+    table.add_column("Review", justify="center")
+    table.add_column("Report", justify="center")
+
+    for r in runs:
+        steps = r.get("steps", {})
+        table.add_row(
+            r.get("run_id", "?"),
+            r.get("name", ""),
+            r.get("created_at", "")[:19],
+            "[green]✓[/green]" if steps.get("crawl") else "[dim]·[/dim]",
+            "[green]✓[/green]" if steps.get("screen") else "[dim]·[/dim]",
+            "[green]✓[/green]" if steps.get("download") else "[dim]·[/dim]",
+            "[green]✓[/green]" if steps.get("review") else "[dim]·[/dim]",
+            "[green]✓[/green]" if steps.get("report") else "[dim]·[/dim]",
+        )
+    console.print(table)
+
+
+@app.command(name="status")
+def run_status(
+    run_id: str = typer.Argument(..., help="Run ID"),
+    runs_root: Path = typer.Option(None, "--runs-root", help="Runs root directory"),
+) -> None:
+    """Show detailed status of a research run."""
+    _load_config()
+    from fwma.core.service import FWMAService
+
+    service = FWMAService(runs_root=runs_root)
+    try:
+        status = service.run_status(run_id)
+    except ValueError:
+        console.print(f"[red]Run not found:[/red] {run_id}")
+        raise typer.Exit(1)
+
+    # Basic info
+    info_table = Table(title=f"Run: {run_id}", show_header=False)
+    info_table.add_column("Field", style="bold")
+    info_table.add_column("Value")
+    info_table.add_row("Name", status.get("name", ""))
+    info_table.add_row("Requirement", status.get("requirement", ""))
+    info_table.add_row("Created", status.get("created_at", ""))
+    console.print(info_table)
+
+    # Steps
+    steps = status.get("steps", {})
+    steps_table = Table(title="Pipeline Steps")
+    steps_table.add_column("Step", style="bold")
+    steps_table.add_column("Status", justify="center")
+    for step_name in ALL_STEPS:
+        done = steps.get(step_name, False)
+        steps_table.add_row(step_name, "[green]✓ Done[/green]" if done else "[dim]Pending[/dim]")
+    console.print(steps_table)
+
+    # Active jobs
+    active_jobs = status.get("active_jobs", [])
+    if active_jobs:
+        jobs_table = Table(title="Jobs")
+        jobs_table.add_column("Job ID", style="cyan")
+        jobs_table.add_column("Step")
+        jobs_table.add_column("Status")
+        jobs_table.add_column("Progress")
+        for job in active_jobs:
+            progress = job.get("progress")
+            progress_str = ""
+            if progress and progress.get("total"):
+                progress_str = f"{progress.get('current', 0)}/{progress['total']}"
+            jobs_table.add_row(job.get("job_id", ""), job.get("step", ""), job.get("status", ""), progress_str)
+        console.print(jobs_table)
+
+    # Sources
+    sources = status.get("sources", [])
+    if sources:
+        src_table = Table(title="Data Sources")
+        src_table.add_column("Type", style="bold")
+        src_table.add_column("Query")
+        for src in sources:
+            src_table.add_row(src.get("type", ""), src.get("query", ""))
+        console.print(src_table)
+
+
+@app.command(name="show")
+def show_artifact(
+    run_id: str = typer.Argument(..., help="Run ID"),
+    path: str = typer.Argument(
+        None,
+        help="Artifact path relative to run dir (e.g. crawl/papers_metadata.json). Omit to list available files.",
+    ),
+    runs_root: Path = typer.Option(None, "--runs-root", help="Runs root directory"),
+) -> None:
+    """Show intermediate results of a research run."""
+    _load_config()
+    from fwma.core.service import FWMAService
+
+    service = FWMAService(runs_root=runs_root)
+
+    # If no path given, list available artifacts
+    if not path:
+        run_dir = service.run_manager.runs_root / run_id
+        if not run_dir.exists():
+            console.print(f"[red]Run not found:[/red] {run_id}")
+            raise typer.Exit(1)
+
+        table = Table(title=f"Artifacts in {run_id}")
+        table.add_column("Path", style="cyan")
+        table.add_column("Size")
+
+        for f in sorted(run_dir.rglob("*")):
+            if f.is_file() and f.name != "run_config.json":
+                rel = f.relative_to(run_dir)
+                size = f.stat().st_size
+                if size < 1024:
+                    size_str = f"{size} B"
+                elif size < 1024 * 1024:
+                    size_str = f"{size / 1024:.1f} KB"
+                else:
+                    size_str = f"{size / (1024 * 1024):.1f} MB"
+                table.add_row(str(rel), size_str)
+
+        console.print(table)
+        return
+
+    try:
+        content = service.read_artifact(run_id, path)
+    except (ValueError, FileNotFoundError) as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
+    # Try to pretty-print JSON, otherwise print raw
+    if path.endswith(".json"):
+        try:
+            data = json.loads(content)
+            _print_dict(path, data if isinstance(data, dict) else {"data": data})
+            return
+        except json.JSONDecodeError:
+            pass
+    console.print(content)
 
 
 @app.command()

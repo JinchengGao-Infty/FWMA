@@ -13,11 +13,11 @@ from pydantic import BaseModel, Field
 class ModelsConfig(BaseModel):
     """LLM model assignments for each role."""
 
-    screener: str = "openai/gpt-5.2"
-    chair: str = "gemini/gemini-3.1-pro-low"
+    screener: str = "openai/gpt-5.4"
+    chair: str = "gemini/gemini-3.1-pro-preview"
     member1: str = "anthropic/claude-opus-4-6"
-    member2: str = "openai/gpt-5.2"
-    report: str = "gemini/gemini-3.1-pro-high"
+    member2: str = "openai/gpt-5.4"
+    report: str = "gemini/gemini-3.1-pro-preview"
     writing_review: str = "anthropic/claude-opus-4-6"
     citation_check: str = "gemini/gemini-3-flash"
     pdf_vision: str = "gemini/gemini-3-flash"
@@ -30,6 +30,12 @@ class FWMAConfig(BaseModel):
     gemini_api_key: str = ""
     anthropic_api_key: str = ""
     openai_api_key: str = ""
+
+    # Base URLs (empty = use provider defaults)
+    anthropic_base_url: str = ""
+    openai_base_url: str = ""
+    gemini_base_url: str = ""
+    gemini_openai_base_url: str = ""
 
     # Model assignments
     models: ModelsConfig = Field(default_factory=ModelsConfig)
@@ -89,6 +95,11 @@ class FWMAConfig(BaseModel):
         config_data["gemini_api_key"] = os.getenv("GEMINI_API_KEY", "")
         config_data["anthropic_api_key"] = os.getenv("ANTHROPIC_API_KEY", "")
         config_data["openai_api_key"] = os.getenv("OPENAI_API_KEY", "")
+
+        config_data["anthropic_base_url"] = os.getenv("ANTHROPIC_BASE_URL", "")
+        config_data["openai_base_url"] = os.getenv("OPENAI_BASE_URL", "")
+        config_data["gemini_base_url"] = os.getenv("GEMINI_BASE_URL", "")
+        config_data["gemini_openai_base_url"] = os.getenv("GEMINI_OPENAI_BASE_URL", "")
 
         if mailto := os.getenv("FWMA_OPENALEX_MAILTO"):
             config_data["openalex_mailto"] = mailto
