@@ -493,7 +493,7 @@ class FWMAService:
             return []
 
         reviews: list[dict[str, Any]] = []
-        for review_file in sorted(review_dir.glob("*_review.json")):
+        for review_file in sorted(review_dir.glob("*.json")):
             try:
                 reviews.append(json.loads(review_file.read_text(encoding="utf-8")))
             except Exception:
