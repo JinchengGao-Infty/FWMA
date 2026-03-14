@@ -34,38 +34,14 @@ def _call_with_retry(
     fn: callable,
     provider: str,
     *args: Any,
-    hard_timeout: int = 360,
     **kwargs: Any,
 ) -> requests.Response:
     """Execute HTTP call with exponential backoff retry on transient errors."""
-    import threading
-    import ctypes
-
     _rate_limit_wait(provider)
     last_exc = None
     for attempt in range(MAX_RETRIES + 1):
         try:
-            response_holder = [None]
-            exc_holder = [None]
-
-            def _do_call():
-                try:
-                    response_holder[0] = fn(*args, **kwargs)
-                except Exception as e:
-                    exc_holder[0] = e
-
-            t = threading.Thread(target=_do_call, daemon=True)
-            t.start()
-            t.join(timeout=hard_timeout)
-
-            if t.is_alive():
-                logger.warning(f"{provider} hard timeout after {hard_timeout}s, attempt {attempt + 1}/{MAX_RETRIES}")
-                raise requests.exceptions.Timeout(f"{provider} hard timeout after {hard_timeout}s")
-
-            if exc_holder[0] is not None:
-                raise exc_holder[0]
-
-            response = response_holder[0]
+            response = fn(*args, **kwargs)
             if response.status_code in RETRY_STATUS_CODES:
                 delay = RETRY_BASE_DELAY * (2 ** attempt)
                 logger.warning(
