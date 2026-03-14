@@ -44,7 +44,7 @@ class Parliament:
         member2_prompt: str | None = None,
         chair_prompt: str | None = None,
         verdict_prompt: str | None = None,
-        use_default_prompts: bool = True,
+        use_default_prompts: bool = False,
         prompts_module: Any = None,
     ):
         """Initialize the Parliament.

@@ -97,6 +97,7 @@ def parse_json_response(text: str) -> dict:
             logger.warning(f"Regex extraction failed: {str(e2)[:100]}")
 
         logger.warning(f"JSON parse error: {str(e)[:100]}")
+        logger.warning(f"Raw text (first 300 chars): {text[:300]!r}")
 
     except Exception as e:
         logger.warning(f"Parse exception: {str(e)[:100]}")

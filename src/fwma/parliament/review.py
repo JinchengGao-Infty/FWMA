@@ -19,7 +19,7 @@ def review_paper(
     user_requirement: str,
     parliament: Parliament | None = None,
     pdf_path: Path | str | None = None,
-    vision_model: str = "gemini/gemini-2.0-flash",
+    vision_model: str = "gemini/gemini-3-flash",
 ) -> dict:
     """Review a single paper using AI Parliament.
 
@@ -88,7 +88,7 @@ def review_batch(
     parliament: Parliament | None = None,
     pdf_dir: Path | str | None = None,
     reviews_dir: Path | str | None = None,
-    vision_model: str = "gemini/gemini-2.0-flash",
+    vision_model: str = "gemini/gemini-3-flash",
     max_papers: int | None = None,
     on_progress: Callable[[int, int], None] | None = None,
     concurrency: int = 3,

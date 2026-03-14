@@ -51,7 +51,7 @@ def extract_visuals_from_pdf(
     pdf_path: str | Path,
     api_url: str | None = None,
     api_key: str | None = None,
-    model: str = "gemini-2.0-flash",
+    model: str = "gemini-3-flash",
 ) -> list[dict]:
     """Extract visual elements from PDF using vision model.
 
@@ -198,7 +198,7 @@ def extract_full(
     pdf_path: str | Path,
     api_url: str | None = None,
     api_key: str | None = None,
-    model: str = "gemini-2.0-flash",
+    model: str = "gemini-3-flash",
 ) -> dict:
     """Extract both text and visuals from PDF.
 

@@ -144,7 +144,7 @@ def call_anthropic(
                 break
 
     logger.debug(f"Calling Anthropic: {model}")
-    response = _call_with_retry(requests.post, "anthropic", url, headers=headers, json=payload, timeout=120)
+    response = _call_with_retry(requests.post, "anthropic", url, headers=headers, json=payload, timeout=300)
 
     data = response.json()
 
@@ -152,7 +152,12 @@ def call_anthropic(
         raise RuntimeError(f"Anthropic API error: {data['error']}")
 
     content = data.get("content", [])
-    return content[0].get("text", "") if content else ""
+    # Extract text blocks, skip tool_use blocks (new-api may inject tools)
+    text_parts = [c.get("text", "") for c in content if c.get("type") == "text"]
+    result = "\n".join(text_parts) if text_parts else ""
+    if not result.strip():
+        logger.warning(f"Anthropic returned empty/blank response. content={content!r}, data keys={list(data.keys())}")
+    return result
 
 
 def call_gemini_native(
@@ -184,7 +189,7 @@ def call_gemini_native(
     response = _call_with_retry(
         requests.post, "gemini", url,
         headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
-        json=payload, timeout=120, stream=True,
+        json=payload, timeout=300, stream=True,
     )
 
     # Parse SSE stream
@@ -251,14 +256,17 @@ def call_openai_format(
     }
 
     logger.debug(f"Calling OpenAI-format: {model} at {url}")
-    response = _call_with_retry(requests.post, provider, url, headers=headers, json=payload, timeout=120)
+    response = _call_with_retry(requests.post, provider, url, headers=headers, json=payload, timeout=300)
     data = response.json()
 
     if "error" in data:
         raise RuntimeError(f"API error: {data['error']}")
 
     choices = data.get("choices", [])
-    return choices[0].get("message", {}).get("content", "") if choices else ""
+    result = choices[0].get("message", {}).get("content", "") if choices else ""
+    if not result.strip():
+        logger.warning(f"OpenAI returned empty/blank response. choices={choices!r}, data keys={list(data.keys())}")
+    return result
 
 
 def call_gemini_structured(
@@ -311,7 +319,7 @@ def call_gemini_structured(
                 },
             }
 
-            response = _call_with_retry(requests.post, "gemini", url, headers=headers, json=payload, timeout=120)
+            response = _call_with_retry(requests.post, "gemini", url, headers=headers, json=payload, timeout=300)
             data = response.json()
             content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
 
@@ -343,7 +351,7 @@ def call_gemini_structured(
     response = _call_with_retry(
         requests.post, "gemini", url,
         headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
-        json=payload_native, timeout=120,
+        json=payload_native, timeout=300,
     )
     data = response.json()
 
