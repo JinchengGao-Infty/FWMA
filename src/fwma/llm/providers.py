@@ -173,7 +173,7 @@ def call_gemini_native(
     api_key = api_key or get_api_key("gemini")
     base_url = base_url or get_base_url("gemini")
 
-    url = f"{base_url}/v1beta/models/{model}:streamGenerateContent?alt=sse"
+    url = f"{base_url}/v1beta/models/{model}:generateContent"
 
     # Build contents in Gemini native format
     contents = []
@@ -189,29 +189,16 @@ def call_gemini_native(
     response = _call_with_retry(
         requests.post, "gemini", url,
         headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
-        json=payload, timeout=300, stream=True,
+        json=payload, timeout=300,
     )
 
-    # Parse SSE stream
-    full_text = []
-    for line in response.iter_lines():
-        if not line:
-            continue
-        line_str = line.decode("utf-8") if isinstance(line, bytes) else line
-        if line_str.startswith("data: "):
-            json_str = line_str[6:]
-            try:
-                chunk = json.loads(json_str)
-                candidates = chunk.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    for part in parts:
-                        if "text" in part:
-                            full_text.append(part["text"])
-            except json.JSONDecodeError:
-                continue
-
-    return "".join(full_text)
+    data = response.json()
+    candidates = data.get("candidates", [])
+    if not candidates:
+        logger.warning(f"Gemini returned no candidates. data keys={list(data.keys())}")
+        return ""
+    parts = candidates[0].get("content", {}).get("parts", [])
+    return "".join(p.get("text", "") for p in parts)
 
 
 def call_openai_format(
