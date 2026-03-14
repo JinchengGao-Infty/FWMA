@@ -136,7 +136,7 @@ def call_anthropic(
         "messages": safe_messages,
     }
     if system_prompt:
-        payload["system"] = system_prompt
+        payload["system"] = [{"type": "text", "text": system_prompt}]
         prefix = f"[系统指令]\n{system_prompt}\n[/系统指令]\n\n"
         for msg in safe_messages:
             if msg.get("role") == "user":

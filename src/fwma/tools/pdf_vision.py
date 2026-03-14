@@ -105,8 +105,9 @@ def extract_visuals_from_pdf(
         is_native_google = "generativelanguage.googleapis.com" in api_url
 
         if is_native_google:
-            # Native Google Gemini API
-            url = f"{api_url}/{model}:generateContent"
+            # Native Google Gemini API — strip provider prefix if present
+            bare_model = model.split("/", 1)[-1] if "/" in model else model
+            url = f"{api_url}/{bare_model}:generateContent"
             payload = {
                 "system_instruction": {"parts": [{"text": system_prompt}]},
                 "contents": [
