@@ -34,14 +34,29 @@ def _call_with_retry(
     fn: callable,
     provider: str,
     *args: Any,
+    hard_timeout: int = 360,
     **kwargs: Any,
 ) -> requests.Response:
     """Execute HTTP call with exponential backoff retry on transient errors."""
+    import signal
+
+    class _HardTimeout(Exception):
+        pass
+
+    def _alarm_handler(signum, frame):
+        raise _HardTimeout(f"{provider} hard timeout after {hard_timeout}s")
+
     _rate_limit_wait(provider)
     last_exc = None
     for attempt in range(MAX_RETRIES + 1):
         try:
-            response = fn(*args, **kwargs)
+            old_handler = signal.signal(signal.SIGALRM, _alarm_handler)
+            signal.alarm(hard_timeout)
+            try:
+                response = fn(*args, **kwargs)
+            finally:
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, old_handler)
             if response.status_code in RETRY_STATUS_CODES:
                 delay = RETRY_BASE_DELAY * (2 ** attempt)
                 logger.warning(
@@ -53,7 +68,7 @@ def _call_with_retry(
                     continue
                 response.raise_for_status()
             return response
-        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError, _HardTimeout) as e:
             last_exc = e
             delay = RETRY_BASE_DELAY * (2 ** attempt)
             logger.warning(
@@ -144,7 +159,7 @@ def call_anthropic(
                 break
 
     logger.debug(f"Calling Anthropic: {model}")
-    response = _call_with_retry(requests.post, "anthropic", url, headers=headers, json=payload, timeout=300)
+    response = _call_with_retry(requests.post, "anthropic", url, headers=headers, json=payload, timeout=(10, 300))
 
     data = response.json()
 
@@ -189,7 +204,7 @@ def call_gemini_native(
     response = _call_with_retry(
         requests.post, "gemini", url,
         headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
-        json=payload, timeout=300,
+        json=payload, timeout=(10, 300),
     )
 
     data = response.json()
@@ -243,7 +258,7 @@ def call_openai_format(
     }
 
     logger.debug(f"Calling OpenAI-format: {model} at {url}")
-    response = _call_with_retry(requests.post, provider, url, headers=headers, json=payload, timeout=300)
+    response = _call_with_retry(requests.post, provider, url, headers=headers, json=payload, timeout=(10, 300))
     data = response.json()
 
     if "error" in data:
@@ -306,7 +321,7 @@ def call_gemini_structured(
                 },
             }
 
-            response = _call_with_retry(requests.post, "gemini", url, headers=headers, json=payload, timeout=300)
+            response = _call_with_retry(requests.post, "gemini", url, headers=headers, json=payload, timeout=(10, 300))
             data = response.json()
             content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
 
@@ -338,7 +353,7 @@ def call_gemini_structured(
     response = _call_with_retry(
         requests.post, "gemini", url,
         headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
-        json=payload_native, timeout=300,
+        json=payload_native, timeout=(10, 300),
     )
     data = response.json()
 
