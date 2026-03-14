@@ -36,3 +36,4 @@ htmlcov/
 # Private project files (contains API keys/endpoints)
 .pfiles/
 .ccx/
+research/
