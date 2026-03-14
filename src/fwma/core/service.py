@@ -388,6 +388,11 @@ class FWMAService:
             if "relevance" not in paper and "relevance" in entry:
                 paper["relevance"] = entry["relevance"]
             papers.append(paper)
+        # Only download high-relevance papers to save space
+        high_papers = [p for p in papers if p.get("relevance") == "high"]
+        if high_papers:
+            papers = high_papers
+            logger.info(f"Filtering to {len(papers)} high-relevance papers (skipping {len(screened) - len(papers)} medium/low)")
         job_id = f"job_download_{uuid.uuid4().hex[:8]}"
 
         def on_progress(current: int, total: int) -> None:
