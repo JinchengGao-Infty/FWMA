@@ -1,12 +1,19 @@
 """LLM provider implementations — Claude, Gemini, GPT, OpenAI-compatible."""
 from __future__ import annotations
+
 import copy
 import json
 import logging
+import multiprocessing.connection
 import os
+import threading
 import time
+import traceback
+from multiprocessing import get_context
 from typing import Any
+
 import requests
+from requests.structures import CaseInsensitiveDict
 
 logger = logging.getLogger(__name__)
 
@@ -17,17 +24,183 @@ RETRY_BASE_DELAY = 2.0  # seconds, doubles each retry
 RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 MIN_CALL_INTERVAL = 0.5  # seconds between LLM calls
 _last_call_time: dict[str, float] = {}  # per-provider timestamp
+_rate_limit_lock = threading.Lock()
+DEFAULT_HARD_TIMEOUT_SECONDS = 360.0
+HTTP_METHOD_NAMES = {"delete", "get", "patch", "post", "put"}
 
 
 def _rate_limit_wait(provider: str) -> None:
     """Enforce minimum interval between calls to the same provider."""
-    now = time.time()
-    last = _last_call_time.get(provider, 0)
-    wait = MIN_CALL_INTERVAL - (now - last)
+    wait = 0.0
+    with _rate_limit_lock:
+        now = time.time()
+        last = _last_call_time.get(provider, 0)
+        wait = MIN_CALL_INTERVAL - (now - last)
+        if wait <= 0:
+            _last_call_time[provider] = now
     if wait > 0:
         logger.debug(f"Rate limit: waiting {wait:.1f}s before calling {provider}")
         time.sleep(wait)
-    _last_call_time[provider] = time.time()
+        with _rate_limit_lock:
+            _last_call_time[provider] = time.time()
+
+
+def _serialize_response(response: requests.Response) -> dict[str, Any]:
+    """Convert a requests.Response into a pipe-safe payload."""
+    return {
+        "status_code": response.status_code,
+        "headers": dict(response.headers),
+        "content": response.content,
+        "url": response.url,
+        "reason": response.reason,
+        "encoding": response.encoding,
+    }
+
+
+def _deserialize_response(payload: dict[str, Any]) -> requests.Response:
+    """Rebuild a minimal Response object from serialized data."""
+    response = requests.Response()
+    response.status_code = payload["status_code"]
+    response.headers = CaseInsensitiveDict(payload.get("headers", {}))
+    response._content = payload.get("content", b"")
+    response.url = payload.get("url", "")
+    response.reason = payload.get("reason", "")
+    response.encoding = payload.get("encoding")
+    return response
+
+
+def _http_request_worker(
+    conn: multiprocessing.connection.Connection,
+    method_name: str,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> None:
+    """Run a requests call in a child process so the parent can hard-timeout it."""
+    try:
+        fn = getattr(requests, method_name)
+        response = fn(*args, **kwargs)
+        conn.send({"ok": True, "response": _serialize_response(response)})
+    except Exception as exc:
+        conn.send(
+            {
+                "ok": False,
+                "exc_type": type(exc).__name__,
+                "message": str(exc),
+                "traceback": traceback.format_exc(),
+            }
+        )
+    finally:
+        conn.close()
+
+
+def _terminate_process(process: Any) -> None:
+    """Terminate a child process and ensure it is reaped."""
+    process.terminate()
+    process.join(timeout=1)
+    if process.is_alive():
+        process.kill()
+        process.join(timeout=1)
+
+
+def _wait_for_worker_result(
+    process: Any,
+    conn: multiprocessing.connection.Connection,
+    provider: str,
+    hard_timeout_seconds: float,
+) -> dict[str, Any]:
+    """Wait for child-process result up to a hard deadline."""
+    deadline = time.monotonic() + hard_timeout_seconds
+    while True:
+        if conn.poll(0.1):
+            return conn.recv()
+        if not process.is_alive():
+            if conn.poll(0):
+                return conn.recv()
+            raise RuntimeError(
+                f"{provider} HTTP worker exited with code {process.exitcode} without returning a response"
+            )
+        if time.monotonic() >= deadline:
+            logger.warning(
+                "%s hard timeout after %.1fs waiting for HTTP response body; killing worker pid=%s",
+                provider,
+                hard_timeout_seconds,
+                process.pid,
+            )
+            _terminate_process(process)
+            raise requests.exceptions.Timeout(
+                f"{provider} hard timeout after {hard_timeout_seconds:.1f}s"
+            )
+
+
+def _restore_child_exception(provider: str, payload: dict[str, Any]) -> Exception:
+    """Map child-process exception payloads back into requests/native exceptions."""
+    exc_type = payload.get("exc_type", "RuntimeError")
+    message = payload.get("message", "")
+    trace = payload.get("traceback", "")
+
+    if exc_type in {"ConnectTimeout", "ReadTimeout", "Timeout"}:
+        return requests.exceptions.Timeout(f"{provider} {message}")
+    if exc_type in {"ConnectionError", "ProxyError", "SSLError"}:
+        return requests.exceptions.ConnectionError(f"{provider} {message}")
+    if exc_type == "HTTPError":
+        return requests.HTTPError(message)
+    if trace:
+        return RuntimeError(f"{provider} HTTP worker failed with {exc_type}: {message}\n{trace}")
+    return RuntimeError(f"{provider} HTTP worker failed with {exc_type}: {message}")
+
+
+def _resolve_hard_timeout_seconds(provider: str, timeout: Any, override: float | None) -> float:
+    """Choose a wall-clock timeout for a single HTTP attempt."""
+    if override is not None:
+        return override
+
+    provider_env = os.getenv(f"FWMA_{provider.upper()}_HARD_TIMEOUT_SECONDS")
+    if provider_env:
+        return float(provider_env)
+
+    global_env = os.getenv("FWMA_LLM_HARD_TIMEOUT_SECONDS")
+    if global_env:
+        return float(global_env)
+
+    if isinstance(timeout, tuple) and len(timeout) == 2 and timeout[1] is not None:
+        return max(float(timeout[1]) + 60.0, DEFAULT_HARD_TIMEOUT_SECONDS)
+    if isinstance(timeout, (int, float)):
+        return max(float(timeout) + 60.0, DEFAULT_HARD_TIMEOUT_SECONDS)
+    return DEFAULT_HARD_TIMEOUT_SECONDS
+
+
+def _invoke_http_call(
+    fn: callable,
+    provider: str,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    hard_timeout_seconds: float,
+) -> requests.Response:
+    """Execute an HTTP call with a real wall-clock deadline."""
+    method_name = getattr(fn, "__name__", "")
+    if method_name not in HTTP_METHOD_NAMES:
+        return fn(*args, **kwargs)
+
+    ctx = get_context("spawn")
+    parent_conn, child_conn = ctx.Pipe(duplex=False)
+    process = ctx.Process(
+        target=_http_request_worker,
+        args=(child_conn, method_name, args, kwargs),
+    )
+    process.start()
+    child_conn.close()
+
+    try:
+        payload = _wait_for_worker_result(process, parent_conn, provider, hard_timeout_seconds)
+    finally:
+        parent_conn.close()
+        process.join(timeout=1)
+        if process.is_alive():
+            _terminate_process(process)
+
+    if payload.get("ok"):
+        return _deserialize_response(payload["response"])
+    raise _restore_child_exception(provider, payload)
 
 
 def _call_with_retry(
@@ -38,10 +211,25 @@ def _call_with_retry(
 ) -> requests.Response:
     """Execute HTTP call with exponential backoff retry on transient errors."""
     _rate_limit_wait(provider)
+    hard_timeout_seconds = _resolve_hard_timeout_seconds(
+        provider,
+        kwargs.get("timeout"),
+        kwargs.pop("hard_timeout_seconds", None),
+    )
     last_exc = None
     for attempt in range(MAX_RETRIES + 1):
+        started_at = time.monotonic()
         try:
-            response = fn(*args, **kwargs)
+            response = _invoke_http_call(fn, provider, args, kwargs, hard_timeout_seconds)
+            elapsed = time.monotonic() - started_at
+            logger.debug(
+                "%s HTTP attempt %d/%d finished with status %s in %.1fs",
+                provider,
+                attempt + 1,
+                MAX_RETRIES + 1,
+                response.status_code,
+                elapsed,
+            )
             if response.status_code in RETRY_STATUS_CODES:
                 delay = RETRY_BASE_DELAY * (2 ** attempt)
                 logger.warning(
@@ -55,9 +243,10 @@ def _call_with_retry(
             return response
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
             last_exc = e
+            elapsed = time.monotonic() - started_at
             delay = RETRY_BASE_DELAY * (2 ** attempt)
             logger.warning(
-                f"{provider} {type(e).__name__}, "
+                f"{provider} {type(e).__name__} after {elapsed:.1f}s, "
                 f"retry {attempt + 1}/{MAX_RETRIES} in {delay:.0f}s"
             )
             if attempt < MAX_RETRIES:
@@ -128,6 +317,7 @@ def call_anthropic(
         "x-api-key": api_key,
         "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
+        "Connection": "close",
     }
 
     payload: dict[str, Any] = {
@@ -229,6 +419,7 @@ def call_openai_format(
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
+        "Connection": "close",
     }
 
     # Prepend system message if provided

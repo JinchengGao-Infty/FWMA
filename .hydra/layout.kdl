@@ -1,0 +1,25 @@
+// CodeHydra default Zellij layout
+//
+// Usage:
+//   zellij --session <project> --layout .hydra/layout.kdl
+//
+// Notes:
+// - Starts with a single `main` tab (for the Claude Lead).
+// - Create agent tabs dynamically (eg. `zellij action new-tab -n codex-1`).
+
+layout {
+    default_tab_template {
+        // Standard Zellij UI (tab bar + status bar)
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+
+    tab name="main" focus=true {
+        pane
+    }
+}
