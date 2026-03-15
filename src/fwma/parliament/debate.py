@@ -161,7 +161,11 @@ class Parliament:
                 messages=[{"role": "user", "content": member1_context}],
                 system_prompt=member1_prompt,
             )
+            logger.info("[Debug] Member1 raw response (first 500 chars): %s", member1_response[:500] if member1_response else "EMPTY")
+            logger.info("[Debug] Member1 raw response length: %d", len(member1_response) if member1_response else 0)
+            import time as _time; _t0 = _time.time()
             member1_data = parse_json_response(member1_response)
+            logger.info("[Debug] Member1 parse_json took %.2fs", _time.time() - _t0)
 
             if not member1_data.get("application_ideas"):
                 logger.debug("[Debug] Member1 response missing application_ideas")

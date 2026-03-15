@@ -34,17 +34,7 @@ def parse_json_response(text: str) -> dict:
     except json.JSONDecodeError as e:
         logger.debug(f"Direct JSON parse failed, trying regex fallback: {str(e)[:100]}")
 
-        try:
-            # Try json_repair if available
-            try:
-                from json_repair import repair_json
-
-                repaired = repair_json(cleaned)  # type: ignore[possibly-unbound]
-                return json.loads(repaired)
-            except (ImportError, Exception):
-                pass
-
-            # Regex fallback for common LLM response fields
+        try:            # Regex fallback for common LLM response fields
             result = {}
             json_str = text
 
