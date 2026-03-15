@@ -134,6 +134,7 @@ def call_anthropic(
         "model": model,
         "max_tokens": max_tokens,
         "messages": safe_messages,
+        "stream": False,
     }
     if system_prompt:
         payload["system"] = [{"type": "text", "text": system_prompt}]
