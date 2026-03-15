@@ -2,28 +2,16 @@
 
 from __future__ import annotations
 
-import copy
 import json
 import logging
-from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Callable
 
 from fwma.parliament.debate import Parliament
 from fwma.tools.pdf_vision import extract_text_from_pdf, extract_visuals_from_pdf, format_visuals_for_context
 
 logger = logging.getLogger(__name__)
-
-
-def _clone_parliament(parliament: Parliament) -> Parliament:
-    """Create a shallow Parliament copy with a fresh LLM client for one worker."""
-    try:
-        cloned = copy.copy(parliament)
-        cloned.client = parliament.client.__class__(api_keys=dict(parliament.client.api_keys))
-        return cloned
-    except Exception as exc:
-        logger.warning("Failed to clone Parliament for worker thread; reusing shared instance: %s", exc)
-        return parliament
 
 
 def review_paper(
@@ -146,7 +134,7 @@ def review_batch(
             if review_path.exists():
                 logger.info(f"[{i + 1}/{len(papers_to_review)}] Skipping (already reviewed): {title[:60]}")
                 try:
-                    with open(review_path, encoding="utf-8") as f:
+                    with open(review_path, "r", encoding="utf-8") as f:
                         resumed_results[i] = json.load(f)
                     if on_progress:
                         on_progress(i + 1, len(papers_to_review))
@@ -178,11 +166,10 @@ def review_batch(
 
         try:
             pdf_path = _find_pdf(paper, safe_title)
-            worker_parliament = parliament if concurrency <= 1 else _clone_parliament(parliament)
             result = review_paper(
                 paper=paper,
                 user_requirement=user_requirement,
-                parliament=worker_parliament,
+                parliament=parliament,
                 pdf_path=pdf_path,
                 vision_model=vision_model,
             )
@@ -202,22 +189,14 @@ def review_batch(
     concurrent_results: dict[int, dict] = {}
     completed_count = len(resumed_results)
 
-    if concurrency <= 1:
-        for idx, paper in pending:
-            idx, result = _review_one(idx, paper)
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        futures = {executor.submit(_review_one, idx, paper): idx for idx, paper in pending}
+        for future in as_completed(futures):
+            idx, result = future.result()
             concurrent_results[idx] = result
             completed_count += 1
             if on_progress:
                 on_progress(completed_count, len(papers_to_review))
-    else:
-        with ThreadPoolExecutor(max_workers=concurrency) as executor:
-            futures = {executor.submit(_review_one, idx, paper): idx for idx, paper in pending}
-            for future in as_completed(futures):
-                idx, result = future.result()
-                concurrent_results[idx] = result
-                completed_count += 1
-                if on_progress:
-                    on_progress(completed_count, len(papers_to_review))
 
     # Merge results in original order
     all_results: dict[int, dict] = {**resumed_results, **concurrent_results}
