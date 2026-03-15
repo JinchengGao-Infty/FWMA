@@ -4,9 +4,11 @@ FWMA Core Utilities — JSON parsing, text processing helpers.
 
 import json
 import logging
-import re
 
 logger = logging.getLogger(__name__)
+
+# Max text length for regex fallback — longer texts cause catastrophic backtracking
+_MAX_REGEX_LEN = 5000
 
 
 def parse_json_response(text: str) -> dict:
@@ -28,63 +30,98 @@ def parse_json_response(text: str) -> dict:
             cleaned = cleaned[:-3]
         cleaned = cleaned.strip()
 
+        # Try to find JSON object in text
+        start = cleaned.find("{")
+        if start > 0:
+            cleaned = cleaned[start:]
+
+        # Find matching closing brace
+        if cleaned.startswith("{"):
+            depth = 0
+            in_string = False
+            escape = False
+            for i, ch in enumerate(cleaned):
+                if escape:
+                    escape = False
+                    continue
+                if ch == '\\' and in_string:
+                    escape = True
+                    continue
+                if ch == '"' and not escape:
+                    in_string = not in_string
+                    continue
+                if in_string:
+                    continue
+                if ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        cleaned = cleaned[:i + 1]
+                        break
+
         # Try direct JSON parse
         return json.loads(cleaned)
 
     except json.JSONDecodeError as e:
-        logger.debug(f"Direct JSON parse failed, trying regex fallback: {str(e)[:100]}")
+        logger.debug(f"Direct JSON parse failed: {str(e)[:100]}")
 
-        try:            # Regex fallback for common LLM response fields
+        # Simple field extraction — no complex regex, no backtracking risk
+        try:
             result = {}
-            json_str = text
 
-            # Extract role
-            role_match = re.search(r'"role"\s*:\s*"([^"]+)"', json_str)
-            if role_match:
-                result["role"] = role_match.group(1)
-
-            # Extract score
-            score_match = re.search(r'"score"\s*:\s*(\d+(?:\.\d+)?)', json_str)
+            # score — just find the number
+            import re
+            score_match = re.search(r'"score"\s*:\s*(\d+(?:\.\d+)?)', text[:2000])
             if score_match:
                 result["score"] = float(score_match.group(1))
 
-            # Extract content (handles escaped quotes and newlines)
-            content_match = re.search(r'"content"\s*:\s*"((?:[^"\\]|\\.|\\n)*)"', json_str, re.DOTALL)
-            if content_match:
-                raw_content = content_match.group(1)
-                result["content"] = raw_content.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
-            else:
-                content_match2 = re.search(r'"content"\s*:\s*"([^"]*(?:"[^"]*)*)"', json_str)
-                if content_match2:
-                    result["content"] = content_match2.group(1)
-
-            # Extract vote
-            vote_match = re.search(r'"vote"\s*:\s*(true|false)', json_str)
+            # vote
+            vote_match = re.search(r'"vote"\s*:\s*(true|false|"end"|"continue")', text[:2000])
             if vote_match:
-                result["vote"] = vote_match.group(1) == "true"
+                v = vote_match.group(1)
+                result["vote"] = v in ("true", '"end"')
             else:
                 result["vote"] = False
 
-            # Extract next_speaker
-            speaker_match = re.search(r'"next_speaker"\s*:\s*"([^"]+)"', json_str)
-            if speaker_match:
-                result["next_speaker"] = speaker_match.group(1)
+            # role
+            role_match = re.search(r'"role"\s*:\s*"([^"]+)"', text[:1000])
+            if role_match:
+                result["role"] = role_match.group(1)
 
-            # Extract array fields
+            # content — just take everything after "content": " up to a reasonable limit
+            # Avoid catastrophic backtracking by not using .* or DOTALL
+            content_start = text.find('"content"')
+            if content_start != -1:
+                # Find the opening quote of the value
+                colon_pos = text.find(':', content_start + 9)
+                if colon_pos != -1:
+                    quote_pos = text.find('"', colon_pos + 1)
+                    if quote_pos != -1:
+                        # Take up to 5000 chars as content preview
+                        result["content"] = text[quote_pos + 1:quote_pos + 5001].split('","')[0]
+
+            # key_points — simple extraction
             for field in ["key_points", "application_ideas", "improvement_suggestions", "concerns"]:
-                array_match = re.search(rf'"{field}"\s*:\s*\[(.*?)\]', json_str, re.DOTALL)
-                if array_match:
-                    array_content = array_match.group(1)
-                    items = re.findall(r'"((?:[^"\\]|\\.)*)"', array_content)
-                    result[field] = [item.replace("\\n", "\n").replace('\\"', '"') for item in items]
+                field_start = text.find(f'"{field}"')
+                if field_start != -1:
+                    bracket_start = text.find('[', field_start)
+                    bracket_end = text.find(']', bracket_start) if bracket_start != -1 else -1
+                    if bracket_start != -1 and bracket_end != -1 and (bracket_end - bracket_start) < 10000:
+                        try:
+                            result[field] = json.loads(text[bracket_start:bracket_end + 1])
+                        except json.JSONDecodeError:
+                            result[field] = []
+                    else:
+                        result[field] = []
                 else:
                     result[field] = []
 
-            if result.get("role") or result.get("content"):
+            if result.get("score") is not None or result.get("content"):
                 return result
 
         except Exception as e2:
-            logger.warning(f"Regex extraction failed: {str(e2)[:100]}")
+            logger.warning(f"Field extraction failed: {str(e2)[:100]}")
 
         logger.warning(f"JSON parse error: {str(e)[:100]}")
         logger.warning(f"Raw text (first 300 chars): {text[:300]!r}")
